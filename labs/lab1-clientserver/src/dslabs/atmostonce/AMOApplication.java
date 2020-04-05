@@ -1,8 +1,11 @@
 package dslabs.atmostonce;
 
+import dslabs.framework.Address;
 import dslabs.framework.Application;
 import dslabs.framework.Command;
 import dslabs.framework.Result;
+import java.util.HashMap;
+import java.util.Map;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NonNull;
@@ -17,6 +20,8 @@ public final class AMOApplication<T extends Application>
     @Getter @NonNull private final T application;
 
     // Your code here...
+    private final Map<Address, Map<Integer, AMOResult>>
+            results = new HashMap<>();
 
     @Override
     public AMOResult execute(Command command) {
@@ -27,7 +32,20 @@ public final class AMOApplication<T extends Application>
         AMOCommand amoCommand = (AMOCommand) command;
 
         // Your code here...
-        return null;
+        Address sender = amoCommand.sender();
+        int sequenceNum = amoCommand.sequenceNum();
+        if (alreadyExecuted(amoCommand)) {
+            return results.get(sender).get(sequenceNum);
+        }
+
+        if (!results.containsKey(sender)) {
+            results.put(sender, new HashMap<>());
+        }
+
+        Result result = application.execute(amoCommand.command());
+        AMOResult amoResult = new AMOResult(result, sender, sequenceNum);
+        results.get(sender).put(sequenceNum, amoResult);
+        return amoResult;
     }
 
     public Result executeReadOnly(Command command) {
@@ -44,6 +62,8 @@ public final class AMOApplication<T extends Application>
 
     public boolean alreadyExecuted(AMOCommand amoCommand) {
         // Your code here...
-        return false;
+        Address sender = amoCommand.sender();
+        return results.containsKey(sender) &&
+                results.get(sender).containsKey(amoCommand.sequenceNum());
     }
 }
