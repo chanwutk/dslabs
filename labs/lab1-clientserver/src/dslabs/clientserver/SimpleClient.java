@@ -1,5 +1,6 @@
 package dslabs.clientserver;
 
+import dslabs.atmostonce.AMOCommand;
 import dslabs.framework.Address;
 import dslabs.framework.Client;
 import dslabs.framework.Command;
@@ -22,15 +23,16 @@ class SimpleClient extends Node implements Client {
     private final Address serverAddress;
 
     // Your code here...
-    private Command command;
+    private Address address;
+    private AMOCommand amoCommand;
     private Result result;
-    private int sequenceNum = 0;
 
     /* -------------------------------------------------------------------------
         Construction and Initialization
        -----------------------------------------------------------------------*/
     public SimpleClient(Address address, Address serverAddress) {
         super(address);
+        this.address = address;
         this.serverAddress = serverAddress;
     }
 
@@ -45,12 +47,13 @@ class SimpleClient extends Node implements Client {
     @Override
     public synchronized void sendCommand(Command command) {
         // Your code here...
-        this.command = command;
+        int sequenceNum = this.amoCommand == null ?
+                0 : this.amoCommand.sequenceNum() + 1;
+        this.amoCommand = new AMOCommand(command, address, sequenceNum);
         result = null;
-        sequenceNum++;
 
-        send(new Request(command, sequenceNum), serverAddress);
-        set(new ClientTimer(command, sequenceNum), CLIENT_RETRY_MILLIS);
+        send(new Request(this.amoCommand), serverAddress);
+        set(new ClientTimer(this.amoCommand), CLIENT_RETRY_MILLIS);
     }
 
     @Override
@@ -73,8 +76,8 @@ class SimpleClient extends Node implements Client {
        -----------------------------------------------------------------------*/
     private synchronized void handleReply(Reply m, Address sender) {
         // Your code here...
-        if (sequenceNum == m.sequenceNum()) {
-            result = m.result();
+        if (amoCommand.sequenceNum() == m.amoResult().sequenceNum()) {
+            result = m.amoResult().result();
             notify();
         }
     }
@@ -84,9 +87,9 @@ class SimpleClient extends Node implements Client {
        -----------------------------------------------------------------------*/
     private synchronized void onClientTimer(ClientTimer t) {
         // Your code here...
-        if (command != null && sequenceNum == t.sequenceNum()
-                && result == null) {
-            send(new Request(command, sequenceNum), serverAddress);
+        if (result == null && amoCommand != null &&
+                amoCommand.sequenceNum() == t.command().sequenceNum()) {
+            send(new Request(amoCommand), serverAddress);
             set(t, CLIENT_RETRY_MILLIS);
         }
     }

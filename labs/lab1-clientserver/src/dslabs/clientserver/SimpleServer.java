@@ -40,9 +40,8 @@ class SimpleServer extends Node {
        -----------------------------------------------------------------------*/
     private void handleRequest(Request m, Address sender) {
         // Your code here...
-        AMOCommand amoCommand = new AMOCommand(
-                m.command(), sender,m.sequenceNum());
+        AMOCommand amoCommand = m.amoCommand();
         AMOResult amoResult = amoApplication.execute(amoCommand);
-        send(new Reply(amoResult.result(), m.sequenceNum()), sender);
+        send(new Reply(amoResult), sender);
     }
 }
