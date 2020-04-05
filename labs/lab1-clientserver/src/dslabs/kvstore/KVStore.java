@@ -74,8 +74,8 @@ public class KVStore implements Application {
         if (command instanceof Get) {
             Get g = (Get) command;
             // Your code here...
-            if (kv.containsKey(g.key)) {
-                return new GetResult(kv.get(g.key));
+            if (kv.containsKey(g.key())) {
+                return new GetResult(kv.get(g.key()));
             } else {
                 return KEY_NOT_FOUND;
             }
@@ -84,15 +84,15 @@ public class KVStore implements Application {
         if (command instanceof Put) {
             Put p = (Put) command;
             // Your code here...
-            kv.put(p.key, p.value);
+            kv.put(p.key(), p.value());
             return PUT_OK;
         }
 
         if (command instanceof Append) {
             Append a = (Append) command;
             // Your code here...
-            String key = a.key;
-            String newValue = a.value;
+            String key = a.key();
+            String newValue = a.value();
             if (kv.containsKey(key)) {
                 newValue = kv.get(key) + newValue;
             }
