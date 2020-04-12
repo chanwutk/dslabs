@@ -2,8 +2,9 @@ package dslabs.primarybackup;
 
 import dslabs.framework.Address;
 import dslabs.framework.Node;
-import dslabs.primarybackup.View;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import lombok.EqualsAndHashCode;
@@ -19,8 +20,9 @@ class ViewServer extends Node {
 
     // Your code here...
     private View currentView;
+    private View newView;
     private Set<Address> aliveServers;
-    private Set<Address> prevAliveServers;
+    private Map<Address, Integer> serversView;
     private boolean ack;
 
     /* -------------------------------------------------------------------------
@@ -35,8 +37,8 @@ class ViewServer extends Node {
         set(new PingCheckTimer(), PING_CHECK_MILLIS);
         // Your code here...
         currentView = new View(STARTUP_VIEWNUM, null, null);
-        aliveServers = new HashSet<Address>();
-        prevAliveServers = new HashSet<Address>();
+        aliveServers = new HashSet<>();
+        serversView = new HashMap<>();
         ack = false;
     }
 
@@ -45,18 +47,31 @@ class ViewServer extends Node {
        -----------------------------------------------------------------------*/
     private void handlePing(Ping m, Address sender) {
         // Your code here...
-        System.out.println(sender);
+        System.out.println(sender + " " + m.viewNum() + " " + currentView.viewNum());
         aliveServers.add(sender);
+        if (!serversView.containsKey(sender) || serversView.get(sender) < m.viewNum()) {
+            serversView.put(sender, m.viewNum());
+        }
+
+        if (Objects.equals(sender, currentView.primary()) && m.viewNum() == currentView.viewNum()) {
+            if (newView != null) {
+                currentView = newView;
+                newView = null;
+            }
+        }
 
         Address primary = currentView.primary();
         int currentViewNum = currentView.viewNum();
-
-        ack = Objects.equals(primary, sender) && m.viewNum() == currentViewNum;
-
         if (currentViewNum == STARTUP_VIEWNUM) {
             currentView = new View(INITIAL_VIEWNUM, sender, null);
-        } else if (currentView.backup() == null && !Objects.equals(sender, primary) && ack) {
-            currentView = new View(currentViewNum + 1, primary, sender);
+            ack = false;
+        } else if (currentView.backup() == null && !Objects.equals(sender, primary)) {
+            if (serversView.get(currentView.primary()) == currentView.viewNum()) {
+                currentView = new View(currentViewNum + 1, primary, sender);
+                newView = null;
+            } else {
+                newView = new View(currentViewNum + 1, primary, sender);
+            }
         }
         send(new ViewReply(currentView), sender);
     }
@@ -75,20 +90,33 @@ class ViewServer extends Node {
         Address backup = currentView.backup();
         int viewNum = currentView.viewNum();
         System.out.println(currentView);
-        if (viewNum != STARTUP_VIEWNUM && ack) {
+        if (viewNum != STARTUP_VIEWNUM && serversView.get(primary) == viewNum) {
             System.out.println(serverAlive(primary) + " " + serverAlive(backup));
             if (!serverAlive(primary)) {
                 if (!serverAlive(backup)) {
                     // TODO: dies?
                     throw new IllegalArgumentException();
                 } else {
-                    replaceBackup(backup);
+                    Address newBackup = findNewBackup(backup);
+                    if (serversView.get(primary) == viewNum) {
+                        currentView = new View(currentView.viewNum() + 1, backup, newBackup);
+                        newView = null;
+                    } else {
+                        newView = new View(currentView.viewNum() + 1, backup, newBackup);
+                    }
                 }
             } else if (!serverAlive(backup)) {
-                replaceBackup(primary);
+                Address newBackup = findNewBackup(primary);
+                if (backup != null || newBackup != null) {
+                    if (serversView.get(primary) == viewNum) {
+                        currentView = new View(currentView.viewNum() + 1, primary, newBackup);
+                        newView = null;
+                    } else {
+                        newView = new View(currentView.viewNum() + 1, primary, newBackup);
+                    }
+                }
             }
-            prevAliveServers = aliveServers;
-            aliveServers = new HashSet<Address>();
+            aliveServers.clear();
         }
         set(t, PING_CHECK_MILLIS);
     }
@@ -99,19 +127,8 @@ class ViewServer extends Node {
     // Your code here...
 
     private boolean serverAlive(Address server) {
-        return aliveServers.contains(server); // || prevAliveServers.contains(server);
-    }
-
-    private void replaceBackup(Address newPrimary) {
-        Address newBackup = findNewBackup(newPrimary);
-        if (!Objects.equals(newBackup, currentView.backup()) ||
-                !Objects.equals(newPrimary, currentView.primary())) {
-            // TODO: copy k-v to new backup.
-            if (!Objects.equals(newPrimary, currentView.primary())) {
-                ack = false;
-            }
-            currentView = new View(currentView.viewNum() + 1, newPrimary, newBackup);
-        }
+        return aliveServers.contains(server);
+//        return serversView.containsKey(server);
     }
 
     private Address findNewBackup(Address primary) {
@@ -120,13 +137,6 @@ class ViewServer extends Node {
                 return server;
             }
         }
-
-        // for (Address server : prevAliveServers) {
-        //     if (server.compareTo(primary) != 0) {
-        //         return server;
-        //     }
-        // }
-
         return null;
     }
 }
