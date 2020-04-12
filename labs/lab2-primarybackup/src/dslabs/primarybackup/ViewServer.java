@@ -36,6 +36,7 @@ class ViewServer extends Node {
         set(new PingCheckTimer(), PING_CHECK_MILLIS);
         // Your code here...
         currentView = new View(STARTUP_VIEWNUM, null, null);
+        tentativeView = null;
         aliveServers = new HashSet<>();
         ack = false;
     }
