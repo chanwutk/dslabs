@@ -20,9 +20,8 @@ class ViewServer extends Node {
 
     // Your code here...
     private View currentView;
-    private View newView;
+    private View tentativeView;
     private Set<Address> aliveServers;
-    private Map<Address, Integer> serversView;
     private boolean ack;
 
     /* -------------------------------------------------------------------------
@@ -38,7 +37,6 @@ class ViewServer extends Node {
         // Your code here...
         currentView = new View(STARTUP_VIEWNUM, null, null);
         aliveServers = new HashSet<>();
-        serversView = new HashMap<>();
         ack = false;
     }
 
@@ -47,30 +45,28 @@ class ViewServer extends Node {
        -----------------------------------------------------------------------*/
     private void handlePing(Ping m, Address sender) {
         // Your code here...
-        System.out.println(sender + " " + m.viewNum() + " " + currentView.viewNum());
+//        System.out.println(sender + " " + m.viewNum() + " " + currentView.viewNum());
         aliveServers.add(sender);
-        if (!serversView.containsKey(sender) || serversView.get(sender) < m.viewNum()) {
-            serversView.put(sender, m.viewNum());
-        }
 
         if (Objects.equals(sender, currentView.primary()) && m.viewNum() == currentView.viewNum()) {
-            if (newView != null) {
-                currentView = newView;
-                newView = null;
+            if (tentativeView == null) {
+                ack = true;
+            } else {
+                currentView = tentativeView;
+                tentativeView = null;
+                ack = false;
             }
         }
 
         Address primary = currentView.primary();
-        int currentViewNum = currentView.viewNum();
-        if (currentViewNum == STARTUP_VIEWNUM) {
+        if (currentView.viewNum() == STARTUP_VIEWNUM) {
             currentView = new View(INITIAL_VIEWNUM, sender, null);
             ack = false;
         } else if (currentView.backup() == null && !Objects.equals(sender, primary)) {
-            if (serversView.get(currentView.primary()) == currentView.viewNum()) {
-                currentView = new View(currentViewNum + 1, primary, sender);
-                newView = null;
+            if (ack) {
+                updateView(primary, sender);
             } else {
-                newView = new View(currentViewNum + 1, primary, sender);
+                tentativeView = new View(nextViewNum(), primary, sender);
             }
         }
         send(new ViewReply(currentView), sender);
@@ -88,32 +84,21 @@ class ViewServer extends Node {
         // Your code here...
         Address primary = currentView.primary();
         Address backup = currentView.backup();
-        int viewNum = currentView.viewNum();
-        System.out.println(currentView);
-        if (viewNum != STARTUP_VIEWNUM && serversView.get(primary) == viewNum) {
-            System.out.println(serverAlive(primary) + " " + serverAlive(backup));
+//        System.out.println(currentView);
+        if (currentView.viewNum() != STARTUP_VIEWNUM && ack) {
+//            System.out.println(serverAlive(primary) + " " + serverAlive(backup));
             if (!serverAlive(primary)) {
                 if (!serverAlive(backup)) {
                     // TODO: dies?
                     throw new IllegalArgumentException();
                 } else {
                     Address newBackup = findNewBackup(backup);
-                    if (serversView.get(primary) == viewNum) {
-                        currentView = new View(currentView.viewNum() + 1, backup, newBackup);
-                        newView = null;
-                    } else {
-                        newView = new View(currentView.viewNum() + 1, backup, newBackup);
-                    }
+                    updateView(backup, newBackup);
                 }
             } else if (!serverAlive(backup)) {
                 Address newBackup = findNewBackup(primary);
                 if (backup != null || newBackup != null) {
-                    if (serversView.get(primary) == viewNum) {
-                        currentView = new View(currentView.viewNum() + 1, primary, newBackup);
-                        newView = null;
-                    } else {
-                        newView = new View(currentView.viewNum() + 1, primary, newBackup);
-                    }
+                    updateView(primary, newBackup);
                 }
             }
             aliveServers.clear();
@@ -126,9 +111,18 @@ class ViewServer extends Node {
        -----------------------------------------------------------------------*/
     // Your code here...
 
+    private int nextViewNum() {
+        return currentView.viewNum() + 1;
+    }
+
+    private void updateView(Address primary, Address backup) {
+        currentView = new View(nextViewNum(), primary, backup);
+        tentativeView = null;
+        ack = false;
+    }
+
     private boolean serverAlive(Address server) {
         return aliveServers.contains(server);
-//        return serversView.containsKey(server);
     }
 
     private Address findNewBackup(Address primary) {
