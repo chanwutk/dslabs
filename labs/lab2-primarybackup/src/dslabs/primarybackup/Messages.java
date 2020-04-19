@@ -50,12 +50,14 @@ class ForwardingRequest implements Message {
 
 @Data
 class ForwardingReply implements Message {
+    private final boolean accept;
     private final AMOCommand amoCommand;
     private final Address sender;
 }
 
 @Data
 class StateTransferRequest implements Message {
+    // private final AMOApplication amoApplication;
     private final List<AMOCommand> amoCommands;
 }
 

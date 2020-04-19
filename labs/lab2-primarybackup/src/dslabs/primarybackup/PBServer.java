@@ -30,7 +30,6 @@ class PBServer extends Node {
     private Role role;
     private List<AMOCommand> amoCommands;
     private Map<AMOCommand, AMOResult> amoResults;
-    private Boolean app_transfer;
     private Address transferringAddress;
 
     /* -------------------------------------------------------------------------
@@ -45,7 +44,6 @@ class PBServer extends Node {
         amoCommands = new ArrayList<>();
         amoResults = new HashMap<>();
         currentView = null;
-        app_transfer = true;
         transferringAddress = null;
     }
 
@@ -91,6 +89,7 @@ class PBServer extends Node {
             if (Objects.equals(prevBackup, backup) && backup != null) {
                 transferringAddress = backup;
                 send(new StateTransferRequest(amoCommands), backup);
+                // send(new StateTransferRequest(amoApplication), backup);
                 set(new StateTransferTimer(backup), STATE_TRANSFER_MILLIS);
             }
         }
@@ -102,29 +101,30 @@ class PBServer extends Node {
             AMOCommand amoCommand = m.amoCommand();
             amoCommands.add(amoCommand);
             runAMOCommand(amoCommand);
-            send(new ForwardingReply(amoCommand, m.sender()), sender);
+            send(new ForwardingReply(true, amoCommand, m.sender()), sender);
         } else {
-            send(new Reply(false, null), sender);
+            send(new ForwardingReply(false, null, null), sender);
         }
     }
 
     private void handleForwardingReply(ForwardingReply m, Address sender) {
-        if (role == Role.PRIMARY && Objects.equals(sender, currentView.backup())) {
+        if (role == Role.PRIMARY && Objects.equals(sender, currentView.backup()) && m.accept()) {
             AMOResult amoResult = amoResults.remove(m.amoCommand());
             send(new Reply(true, amoResult), m.sender());
-        } else {
-            throw new IllegalStateException();
         }
     }
 
     private void handleStateTransferRequest(StateTransferRequest m, Address sender) {
         if (role == Role.BACKUP) {
-            amoCommands = new ArrayList(m.amoCommands());
+            System.out.println(m);
+            amoCommands = new ArrayList();
             for (AMOCommand amoCommand : m.amoCommands()) {
                 amoApplication.execute(amoCommand);
+                amoCommands.add(amoCommand);
             }
+            // amoApplication = m.amoApplication().copy();
             send(new StateTransferReply(true), sender);
-        } else {
+        } else  {
             send(new StateTransferReply(false), sender);
         }
     }
@@ -157,8 +157,9 @@ class PBServer extends Node {
 
     private void onStateTransferTimer (StateTransferTimer t) {
         Address backup = t.backup();
-        if (!app_transfer && backup == transferringAddress) {
+        if (backup == transferringAddress) {
             send(new StateTransferRequest(amoCommands), backup);
+            // send(new StateTransferRequest(amoApplication), backup);
             set(t, STATE_TRANSFER_MILLIS);
         }
     }
