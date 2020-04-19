@@ -2,9 +2,7 @@ package dslabs.primarybackup;
 
 import dslabs.framework.Address;
 import dslabs.framework.Node;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import lombok.EqualsAndHashCode;
@@ -89,10 +87,7 @@ class ViewServer extends Node {
         if (currentView.viewNum() != STARTUP_VIEWNUM && ack) {
 //            System.out.println(serverAlive(primary) + " " + serverAlive(backup));
             if (!serverAlive(primary)) {
-                if (!serverAlive(backup)) {
-                    // TODO: dies?
-                    throw new IllegalArgumentException();
-                } else {
+                if (serverAlive(backup)) {
                     Address newBackup = findNewBackup(backup);
                     updateView(backup, newBackup);
                 }

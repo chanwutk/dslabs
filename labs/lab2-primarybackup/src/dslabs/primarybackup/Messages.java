@@ -1,8 +1,11 @@
 package dslabs.primarybackup;
 
+import dslabs.atmostonce.AMOApplication;
 import dslabs.atmostonce.AMOCommand;
 import dslabs.atmostonce.AMOResult;
+import dslabs.framework.Address;
 import dslabs.framework.Message;
+import java.util.List;
 import lombok.Data;
 
 /* -------------------------------------------------------------------------
@@ -34,7 +37,29 @@ class Request implements Message {
 @Data
 class Reply implements Message {
     // Your code here...
+    private final boolean accept;
     private final AMOResult amoResult;
 }
 
 // Your code here...
+@Data
+class ForwardingRequest implements Message {
+    private final AMOCommand amoCommand;
+    private final Address sender;
+}
+
+@Data
+class ForwardingReply implements Message {
+    private final AMOCommand amoCommand;
+    private final Address sender;
+}
+
+@Data
+class StateTransferRequest implements Message {
+    private final List<AMOCommand> amoCommands;
+}
+
+@Data
+class StateTransferReply implements Message {
+    private final boolean accept;
+}
