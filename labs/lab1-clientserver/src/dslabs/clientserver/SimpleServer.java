@@ -18,7 +18,7 @@ import lombok.ToString;
 @EqualsAndHashCode(callSuper = true)
 class SimpleServer extends Node {
     // Your code here...
-    private final AMOApplication amoApplication;
+    private final AMOApplication<Application> amoApplication;
 
     /* -------------------------------------------------------------------------
         Construction and Initialization
@@ -27,7 +27,7 @@ class SimpleServer extends Node {
         super(address);
 
         // Your code here...
-        amoApplication = new AMOApplication(app);
+        amoApplication = new AMOApplication<>(app);
     }
 
     @Override

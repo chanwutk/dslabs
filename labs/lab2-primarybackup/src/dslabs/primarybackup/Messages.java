@@ -59,9 +59,11 @@ class ForwardingReply implements Message {
 class StateTransferRequest implements Message {
     // private final AMOApplication amoApplication;
     private final List<AMOCommand> amoCommands;
+    private final View view;
 }
 
 @Data
 class StateTransferReply implements Message {
     private final boolean accept;
+    private final View view;
 }
