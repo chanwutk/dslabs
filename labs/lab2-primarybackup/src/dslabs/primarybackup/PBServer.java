@@ -60,7 +60,7 @@ class PBServer extends Node {
     private void handleRequest(Request m, Address sender) {
         // Your code here...
         // System.out.println(role + " " + m);
-        if (role == Role.PRIMARY) {
+        if (role == Role.PRIMARY && transferringAddress == null) {
             AMOCommand amoCommand = m.amoCommand();
             amoCommands.add(amoCommand);
             AMOResult amoResult = runAMOCommand(amoCommand);
@@ -157,7 +157,7 @@ class PBServer extends Node {
 
     private void onStateTransferTimer (StateTransferTimer t) {
         Address backup = t.backup();
-        if (backup == transferringAddress) {
+        if (Objects.equals(backup, transferringAddress)) {
             send(new StateTransferRequest(amoCommands), backup);
             // send(new StateTransferRequest(amoApplication), backup);
             set(t, STATE_TRANSFER_MILLIS);
