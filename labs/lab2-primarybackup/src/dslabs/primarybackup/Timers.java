@@ -26,7 +26,7 @@ final class ClientTimer implements Timer {
 // Your code here...
 @Data
 final class ForwardingRequestTimer implements Timer {
-    static final int FORWARDING_REQUEST_MILLIS = 100;
+    static final int FORWARDING_REQUEST_MILLIS = 50;
 
     private final ForwardingRequest forwardingRequest;
     private final Address backup;
@@ -34,12 +34,12 @@ final class ForwardingRequestTimer implements Timer {
 
 @Data
 final class StateTransferTimer implements Timer {
-    static final int STATE_TRANSFER_MILLIS = 100;
+    static final int STATE_TRANSFER_MILLIS = 50;
 
     private final Address backup;
 }
 
 @Data
 final class ClientGetViewTimer implements Timer {
-    static final  int GET_VIEW_MILLIS = 100;
+    static final  int GET_VIEW_MILLIS = 50;
 }
