@@ -4,6 +4,7 @@ import dslabs.atmostonce.AMOApplication;
 import dslabs.atmostonce.AMOCommand;
 import dslabs.atmostonce.AMOResult;
 import dslabs.framework.Address;
+import dslabs.framework.Application;
 import dslabs.framework.Message;
 import java.util.List;
 import lombok.Data;
@@ -57,7 +58,7 @@ class ForwardingReply implements Message {
 
 @Data
 class StateTransferRequest implements Message {
-    // private final AMOApplication amoApplication;
+//     private final AMOApplication<Application> amoApplication;
     private final List<AMOCommand> amoCommands;
     private final View view;
 }
