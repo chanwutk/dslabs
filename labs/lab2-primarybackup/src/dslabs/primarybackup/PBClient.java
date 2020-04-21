@@ -98,6 +98,7 @@ class PBClient extends Node implements Client {
        -----------------------------------------------------------------------*/
     private synchronized void onClientTimer(ClientTimer t) {
         // Your code here...
+        // TODO: change target when view changes
         if (result == null && amoCommand != null &&
                 amoCommand.sequenceNum() == t.command().sequenceNum()) {
             if (currentView != null && currentView.primary() != null) {
