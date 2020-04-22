@@ -44,10 +44,11 @@ class ViewServer extends Node {
        -----------------------------------------------------------------------*/
     private void handlePing(Ping m, Address sender) {
         // Your code here...
-//        System.out.println(sender + " " + m.viewNum() + " " + currentView.viewNum());
+        //        System.out.println(sender + " " + m.viewNum() + " " + currentView.viewNum());
         aliveServers.add(sender);
 
-        if (Objects.equals(sender, currentView.primary()) && m.viewNum() == currentView.viewNum()) {
+        if (Objects.equals(sender, currentView.primary()) &&
+                m.viewNum() == currentView.viewNum()) {
             if (tentativeView == null) {
                 ack = true;
             } else {
@@ -61,7 +62,8 @@ class ViewServer extends Node {
         if (currentView.viewNum() == STARTUP_VIEWNUM) {
             currentView = new View(INITIAL_VIEWNUM, sender, null);
             ack = false;
-        } else if (currentView.backup() == null && !Objects.equals(sender, primary)) {
+        } else if (currentView.backup() == null &&
+                !Objects.equals(sender, primary)) {
             if (ack) {
                 updateView(primary, sender);
             } else {
@@ -85,7 +87,7 @@ class ViewServer extends Node {
         Address backup = currentView.backup();
 //        System.out.println(currentView);
         if (currentView.viewNum() != STARTUP_VIEWNUM && ack) {
-//            System.out.println(serverAlive(primary) + " " + serverAlive(backup));
+            //            System.out.println(serverAlive(primary) + " " + serverAlive(backup));
             if (!serverAlive(primary)) {
                 if (serverAlive(backup)) {
                     Address newBackup = findNewBackup(backup);
