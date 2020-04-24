@@ -99,8 +99,8 @@ class ViewServer extends Node {
                     updateView(primary, newBackup);
                 }
             }
-            aliveServers.clear();
         }
+        aliveServers.clear();
         set(t, PING_CHECK_MILLIS);
     }
 
