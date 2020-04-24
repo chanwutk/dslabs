@@ -38,7 +38,6 @@ class Request implements Message {
 @Data
 class Reply implements Message {
     // Your code here...
-    private final boolean accept;
     private final AMOResult amoResult;
 }
 
@@ -58,8 +57,7 @@ class ForwardingReply implements Message {
 
 @Data
 class StateTransferRequest implements Message {
-//     private final AMOApplication<Application> amoApplication;
-    private final List<AMOCommand> amoCommands;
+    private final AMOApplication<Application> amoApplication;
     private final View view;
 }
 

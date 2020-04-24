@@ -1,6 +1,5 @@
 package dslabs.primarybackup;
 
-import dslabs.atmostonce.AMOCommand;
 import dslabs.framework.Address;
 import dslabs.framework.Timer;
 import lombok.Data;
@@ -20,7 +19,7 @@ final class ClientTimer implements Timer {
     static final int CLIENT_RETRY_MILLIS = 100;
 
     // Your code here...
-    private final AMOCommand command;
+    private final int sequenceNum;
 }
 
 // Your code here...

@@ -12,6 +12,7 @@ import lombok.ToString;
 
 import static dslabs.primarybackup.ClientGetViewTimer.GET_VIEW_MILLIS;
 import static dslabs.primarybackup.ClientTimer.CLIENT_RETRY_MILLIS;
+import static dslabs.primarybackup.ViewServer.STARTUP_VIEWNUM;
 
 @ToString(callSuper = true)
 @EqualsAndHashCode(callSuper = true)
@@ -19,7 +20,6 @@ class PBClient extends Node implements Client {
     private final Address viewServer;
 
     // Your code here...
-    private Address address;
     private AMOCommand amoCommand;
     private Result result;
     private View currentView;
@@ -29,13 +29,13 @@ class PBClient extends Node implements Client {
        -----------------------------------------------------------------------*/
     public PBClient(Address address, Address viewServer) {
         super(address);
-        this.address = address;
         this.viewServer = viewServer;
     }
 
     @Override
     public synchronized void init() {
         // Your code here...
+        currentView = new View(STARTUP_VIEWNUM, null, null);
         send(new GetView(), viewServer);
         set(new ClientGetViewTimer(), GET_VIEW_MILLIS);
     }
@@ -46,15 +46,11 @@ class PBClient extends Node implements Client {
     @Override
     public synchronized void sendCommand(Command command) {
         // Your code here...
-        int sequenceNum = this.amoCommand == null ?
-                0 : this.amoCommand.sequenceNum() + 1;
-        this.amoCommand = new AMOCommand(command, address, sequenceNum);
+        int sequenceNum = amoCommand == null ? 0 : amoCommand.sequenceNum() + 1;
+        amoCommand = new AMOCommand(command, address(), sequenceNum);
         result = null;
-        //System.out.println(currentView);
-        if (currentView != null && currentView.primary() != null) {
-            send(new Request(this.amoCommand), currentView.primary());
-        }
-        set(new ClientTimer(this.amoCommand), CLIENT_RETRY_MILLIS);
+        sendCommandToPrimary(amoCommand);
+        set(new ClientTimer(amoCommand.sequenceNum()), CLIENT_RETRY_MILLIS);
     }
 
     @Override
@@ -77,8 +73,8 @@ class PBClient extends Node implements Client {
        -----------------------------------------------------------------------*/
     private synchronized void handleReply(Reply m, Address sender) {
         // Your code here...
-        // System.out.println(m);
-         if (m.accept() && amoCommand.sequenceNum() == m.amoResult().sequenceNum()) {
+        if (isPrimary(sender) && m.amoResult() != null &&
+                amoCommand.sequenceNum() == m.amoResult().sequenceNum()) {
             result = m.amoResult().result();
             notify();
         }
@@ -86,8 +82,12 @@ class PBClient extends Node implements Client {
 
     private synchronized void handleViewReply(ViewReply m, Address sender) {
         // Your code here...
-        if (Objects.equals(sender, viewServer)) {
+        if (Objects.equals(sender, viewServer) &&
+                currentView.viewNum() < m.view().viewNum()) {
             currentView = m.view();
+            if (result == null && amoCommand != null) {
+                sendCommandToPrimary(amoCommand);
+            }
         }
     }
 
@@ -98,12 +98,9 @@ class PBClient extends Node implements Client {
        -----------------------------------------------------------------------*/
     private synchronized void onClientTimer(ClientTimer t) {
         // Your code here...
-        // TODO: change target when view changes
         if (result == null && amoCommand != null &&
-                amoCommand.sequenceNum() == t.command().sequenceNum()) {
-            if (currentView != null && currentView.primary() != null) {
-                send(new Request(amoCommand), currentView.primary());
-            }
+                amoCommand.sequenceNum() == t.sequenceNum()) {
+            sendCommandToPrimary(amoCommand);
             set(t, CLIENT_RETRY_MILLIS);
         }
     }
@@ -111,5 +108,15 @@ class PBClient extends Node implements Client {
     private synchronized void onClientGetViewTimer(ClientGetViewTimer t) {
         send(new GetView(), viewServer);
         set(t, GET_VIEW_MILLIS);
+    }
+
+    private void sendCommandToPrimary(AMOCommand amoCommand) {
+        if (currentView.primary() != null) {
+            send(new Request(amoCommand), currentView.primary());
+        }
+    }
+
+    private boolean isPrimary(Address address) {
+        return Objects.equals(currentView.primary(), address);
     }
 }
