@@ -6,6 +6,7 @@ import dslabs.atmostonce.AMOResult;
 import dslabs.framework.Address;
 import dslabs.framework.Application;
 import dslabs.framework.Message;
+import java.util.List;
 import lombok.Data;
 
 /* -------------------------------------------------------------------------
@@ -42,25 +43,25 @@ class Reply implements Message {
 
 // Your code here...
 @Data
-class FRequest implements Message {
+class ForwardingRequest implements Message {
     private final AMOCommand amoCommand;
     private final Address sender;
 }
 
 @Data
-class FReply implements Message {
+class ForwardingReply implements Message {
     private final boolean accept;
     private final AMOCommand amoCommand;
     private final Address sender;
 }
 
 @Data
-class STRequest implements Message {
+class StateTransferRequest implements Message {
     private final AMOApplication<Application> amoApplication;
     private final View view;
 }
 
 @Data
-class STReply implements Message {
+class StateTransferReply implements Message {
     private final View view;
 }
