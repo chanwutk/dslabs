@@ -63,5 +63,6 @@ class STRequest implements Message {
 
 @Data
 class STReply implements Message {
+    private final boolean accept;
     private final View view;
 }
