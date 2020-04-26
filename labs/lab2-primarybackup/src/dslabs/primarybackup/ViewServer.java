@@ -44,7 +44,7 @@ class ViewServer extends Node {
         // Your code here...
         aliveServers.add(sender);
 
-        if (same(sender, currentView.primary()) &&
+        if (Objects.equals(sender, currentView.primary()) &&
                 m.viewNum() == currentView.viewNum()) {
             ack = true;
         }
@@ -97,10 +97,6 @@ class ViewServer extends Node {
        -----------------------------------------------------------------------*/
     // Your code here...
 
-    private boolean same(Address address1, Address address2) {
-        return Objects.equals(address1, address2);
-    }
-
     private int nextViewNum() {
         return currentView.viewNum() + 1;
     }
@@ -118,7 +114,7 @@ class ViewServer extends Node {
 
     private Address findNewBackup(Address primary) {
         for (Address server : aliveServers) {
-            if (!same(server, primary)) {
+            if (!Objects.equals(server, primary)) {
                 return server;
             }
         }
