@@ -63,6 +63,5 @@ class StateTransferRequest implements Message {
 
 @Data
 class StateTransferReply implements Message {
-    private final boolean accept;
     private final View view;
 }

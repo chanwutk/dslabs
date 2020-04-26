@@ -6,15 +6,13 @@ import dslabs.atmostonce.AMOResult;
 import dslabs.framework.Address;
 import dslabs.framework.Application;
 import dslabs.framework.Node;
-import java.util.HashSet;
 import java.util.Objects;
 
-import java.util.Set;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
 
+import static dslabs.primarybackup.PingTimer.PING_MILLIS;
 import static dslabs.primarybackup.StateTransferTimer.STATE_TRANSFER_MILLIS;
 import static dslabs.primarybackup.ForwardingRequestTimer.FORWARDING_REQUEST_MILLIS;
 import static dslabs.primarybackup.PingCheckTimer.PING_CHECK_MILLIS;
@@ -30,13 +28,11 @@ class PBServer extends Node {
     private static final Logger LOGGER =
             Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
 
-    private final Set<AMOCommand> forwardingCommands;
     private AMOApplication<Application> amoApplication;
     private View currentView;
     private Role role;
 
-    private ForwardingRequest curForwardingRequest;
-    private ForwardingReply curForwardingReply;
+    private AMOCommand forwardingCommand;
 
     private boolean transferring;
     private int transferredViewNum;
@@ -50,11 +46,10 @@ class PBServer extends Node {
 
         // Your code here...
         amoApplication = new AMOApplication<>(app);
-        forwardingCommands = new HashSet<>();
-        currentView = null;
+        currentView = new View(STARTUP_VIEWNUM, null, null);
         transferring = false;
         transferredViewNum = -1;
-        LOGGER.setLevel(Level.OFF);
+        // LOGGER.setLevel(Level.OFF);
     }
 
     @Override
@@ -69,29 +64,31 @@ class PBServer extends Node {
        -----------------------------------------------------------------------*/
     private void handleRequest(Request m, Address sender) {
         // Your code here...
-        //        LOGGER.info("handleRequest");
-        //        LOGGER.info("  address: " + address());
-        //        LOGGER.info("  client: " + sender);
-        //        LOGGER.info("  role: " + role);
-        //        LOGGER.info("  request: " + m);
+//        LOGGER.info("handleRequest");
+//        LOGGER.info("  address: " + address());
+//        LOGGER.info("  client: " + sender);
+//        LOGGER.info("  role: " + role);
+//        LOGGER.info("  request: " + m);
+//        LOGGER.info("  view: " + currentView);
+//        LOGGER.info("  transferring: " + transferring);
+//        LOGGER.info("  forwardingCmd: " + forwardingCommand);
         AMOCommand amoCommand = m.amoCommand();
-        if (role == Role.PRIMARY) {
+        if (role == Role.PRIMARY && !transferring) {
             if (amoApplication.alreadyExecuted(amoCommand)) {
                 AMOResult amoResult = runAMOCommand(amoCommand);
                 send(new Reply(amoResult), sender);
-            } else if (!transferring) {
+            } else {
                 Address currentBackup = currentView.backup();
                 if (currentBackup == null) {
+                    forwardingCommand = null;
                     AMOResult amoResult = runAMOCommand(amoCommand);
                     send(new Reply(amoResult), sender);
-                } else {
-                    if (curForwardingRequest == null) {
-                        forwardingCommands.add(amoCommand);
-                        curForwardingRequest = new ForwardingRequest(amoCommand, sender);
-                        send(curForwardingRequest, currentBackup);
-                        set(new ForwardingRequestTimer(curForwardingRequest,
-                                currentBackup), FORWARDING_REQUEST_MILLIS);
-                    }
+                } else if (forwardingCommand == null) {
+                    forwardingCommand = amoCommand;
+                    ForwardingRequest forwardingRequest = new ForwardingRequest(amoCommand, sender);
+                    send(forwardingRequest, currentBackup);
+                    set(new ForwardingRequestTimer(forwardingRequest,
+                            currentBackup), FORWARDING_REQUEST_MILLIS);
                 }
             }
         } else {
@@ -101,24 +98,29 @@ class PBServer extends Node {
 
     private void handleViewReply(ViewReply m, Address sender) {
         // Your code here...
-        if (Objects.equals(sender, viewServer)) {
-            Address prevBackup =
-                    currentView == null ? null : currentView.backup();
+        if (Objects.equals(sender, viewServer) && m.view().viewNum() > currentView.viewNum()) {
+            forwardingCommand = null;
+            Address prevBackup = currentView.backup();
             currentView = m.view();
             role = getRole(currentView);
             Address backup = currentView.backup();
             if (role == Role.PRIMARY && !Objects.equals(prevBackup, backup)) {
+//                 LOGGER.info("handleViewReply");
+//                 LOGGER.info("  prev backup: " + prevBackup);
+//                 LOGGER.info("  curr backup: " + backup);
+//                 LOGGER.info("  curr view: " + currentView);
                 if (backup != null) {
-                    //                    LOGGER.info("handleViewReply -> transfer");
-                    //                    LOGGER.info("  prev backup: " + prevBackup);
-                    //                    LOGGER.info("  curr backup: " + backup);
-                    //                    LOGGER.info("  curr view: " + currentView);
+//                    LOGGER.info("handleViewReply -> transfer");
+//                    LOGGER.info("  prev backup: " + prevBackup);
+//                    LOGGER.info("  curr backup: " + backup);
+//                    LOGGER.info("  curr view: " + currentView);
                     transferring = true;
                     send(new StateTransferRequest(amoApplication, currentView),
                             backup);
                     set(new StateTransferTimer(backup), STATE_TRANSFER_MILLIS);
                 }
             }
+//            send(new Ping(currentView.viewNum()), viewServer);
         }
     }
 
@@ -128,11 +130,11 @@ class PBServer extends Node {
         boolean accept = false;
         if (role == Role.BACKUP &&
                 Objects.equals(sender, currentView.primary())) {
-            //            LOGGER.info("handleForwardingRequest -> accept");
-            //            LOGGER.info("  curr address: " + address());
-            //            LOGGER.info("  from: " + sender);
-            //            LOGGER.info("  current view: " + currentView);
-            //            LOGGER.info("  command: " + m.amoCommand());
+//            LOGGER.info("handleForwardingRequest -> accept");
+//            LOGGER.info("  curr address: " + address());
+//            LOGGER.info("  from: " + sender);
+//            LOGGER.info("  current view: " + currentView);
+//            LOGGER.info("  command: " + m.amoCommand());
             runAMOCommand(amoCommand);
             accept = true;
         }
@@ -141,14 +143,14 @@ class PBServer extends Node {
 
     private void handleForwardingReply(ForwardingReply m, Address sender) {
         Reply reply = REJECT;
-        if (role == Role.PRIMARY && curForwardingRequest != null &&
-                Objects.equals(sender, currentView.backup()) && m.accept()) {
-            AMOCommand amoCommand = m.amoCommand();
+        AMOCommand amoCommand = m.amoCommand();
+        if (role == Role.PRIMARY && forwardingCommand != null &&
+                Objects.equals(sender, currentView.backup()) && m.accept() &&
+                Objects.equals(amoCommand, forwardingCommand)) {
             AMOResult amoResult = runAMOCommand(amoCommand);
-            forwardingCommands.remove(amoCommand);
             reply = new Reply(amoResult);
+            forwardingCommand = null;
         }
-        curForwardingRequest = null;
         send(reply, m.sender());
     }
 
@@ -157,17 +159,13 @@ class PBServer extends Node {
         View view = m.view();
         if (view.viewNum() > transferredViewNum) {
             transferredViewNum = view.viewNum();
-            //            LOGGER.info("handleStateTransferRequest -> transfer");
-            //            LOGGER.info("  curr address: " + address());
-            //            LOGGER.info("  transfer view: " + m.view());
-            //            LOGGER.info("  current  view: " + currentView);
-            //            LOGGER.info("  same?        : " + sameView(m.view(), currentView));
-            //            if (m.amoCommands().size() > 0) {
-            //                LOGGER.info("  last request: " +
-            //                        m.amoCommands().get(m.amoCommands().size() - 1));
-            //            }
+//            LOGGER.info("handleStateTransferRequest -> transfer");
+//            LOGGER.info("  curr address: " + address());
+//            LOGGER.info("  transfer view: " + m.view());
+//            LOGGER.info("  current  view: " + currentView);
+//            LOGGER.info("  same?        : " + sameView(m.view(), currentView));
             amoApplication = m.amoApplication();
-            send(new StateTransferReply(true, m.view()), sender);
+            send(new StateTransferReply(m.view()), sender);
         }
     }
 
@@ -185,14 +183,14 @@ class PBServer extends Node {
 
     private void onPingTimer(PingTimer t) {
         // Your code here...
-        int viewNum =
-                currentView == null ? STARTUP_VIEWNUM : currentView.viewNum();
+        int viewNum = currentView.viewNum();
         send(new Ping(viewNum), viewServer);
-        set(t, PING_CHECK_MILLIS);
+        set(t, PING_MILLIS);
     }
 
     private void onForwardingRequestTimer(ForwardingRequestTimer t) {
-        if (!transferring && forwardingCommands.contains(t.forwardingRequest().amoCommand())) {
+        if (!transferring && Objects.equals(t.forwardingRequest().amoCommand(),
+                forwardingCommand)) {
             send(t.forwardingRequest(), t.backup());
             set(t, FORWARDING_REQUEST_MILLIS);
         }

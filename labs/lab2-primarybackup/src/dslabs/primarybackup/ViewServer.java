@@ -75,7 +75,7 @@ class ViewServer extends Node {
         // Your code here...
         Address primary = currentView.primary();
         Address backup = currentView.backup();
-        if (currentView.viewNum() != STARTUP_VIEWNUM && ack) {
+        if (currentView.viewNum() != STARTUP_VIEWNUM) {
             if (!serverAlive(primary)) {
                 if (serverAlive(backup)) {
                     Address newBackup = findNewBackup(backup);
