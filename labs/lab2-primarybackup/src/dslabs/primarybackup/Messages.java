@@ -43,25 +43,25 @@ class Reply implements Message {
 
 // Your code here...
 @Data
-class ForwardingRequest implements Message {
+class FRequest implements Message {
     private final AMOCommand amoCommand;
     private final Address sender;
 }
 
 @Data
-class ForwardingReply implements Message {
+class FReply implements Message {
     private final boolean accept;
     private final AMOCommand amoCommand;
     private final Address sender;
 }
 
 @Data
-class StateTransferRequest implements Message {
+class STRequest implements Message {
     private final AMOApplication<Application> amoApplication;
     private final View view;
 }
 
 @Data
-class StateTransferReply implements Message {
+class STReply implements Message {
     private final View view;
 }

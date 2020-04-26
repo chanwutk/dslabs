@@ -13,8 +13,8 @@ import lombok.EqualsAndHashCode;
 import lombok.ToString;
 
 import static dslabs.primarybackup.PingTimer.PING_MILLIS;
-import static dslabs.primarybackup.StateTransferTimer.STATE_TRANSFER_MILLIS;
-import static dslabs.primarybackup.ForwardingRequestTimer.FORWARDING_REQUEST_MILLIS;
+import static dslabs.primarybackup.STRequestTimer.ST_REQUEST_MILLIS;
+import static dslabs.primarybackup.FRequestTimer.F_REQUEST_MILLIS;
 import static dslabs.primarybackup.PingCheckTimer.PING_CHECK_MILLIS;
 import static dslabs.primarybackup.ViewServer.STARTUP_VIEWNUM;
 
@@ -85,10 +85,10 @@ class PBServer extends Node {
                     send(new Reply(amoResult), sender);
                 } else if (forwardingCommand == null) {
                     forwardingCommand = amoCommand;
-                    ForwardingRequest forwardingRequest = new ForwardingRequest(amoCommand, sender);
-                    send(forwardingRequest, currentBackup);
-                    set(new ForwardingRequestTimer(forwardingRequest,
-                            currentBackup), FORWARDING_REQUEST_MILLIS);
+                    FRequest fRequest = new FRequest(amoCommand, sender);
+                    send(fRequest, currentBackup);
+                    set(new FRequestTimer(fRequest,
+                            currentBackup), F_REQUEST_MILLIS);
                 }
             }
         } else {
@@ -115,9 +115,9 @@ class PBServer extends Node {
 //                    LOGGER.info("  curr backup: " + backup);
 //                    LOGGER.info("  curr view: " + currentView);
                     transferring = true;
-                    send(new StateTransferRequest(amoApplication, currentView),
+                    send(new STRequest(amoApplication, currentView),
                             backup);
-                    set(new StateTransferTimer(backup), STATE_TRANSFER_MILLIS);
+                    set(new STRequestTimer(backup), ST_REQUEST_MILLIS);
                 }
             }
 //            send(new Ping(currentView.viewNum()), viewServer);
@@ -125,7 +125,7 @@ class PBServer extends Node {
     }
 
     // Your code here...
-    private void handleForwardingRequest(ForwardingRequest m, Address sender) {
+    private void handleFRequest(FRequest m, Address sender) {
         AMOCommand amoCommand = m.amoCommand();
         boolean accept = false;
         if (role == Role.BACKUP &&
@@ -138,10 +138,10 @@ class PBServer extends Node {
             runAMOCommand(amoCommand);
             accept = true;
         }
-        send(new ForwardingReply(accept, amoCommand, m.sender()), sender);
+        send(new FReply(accept, amoCommand, m.sender()), sender);
     }
 
-    private void handleForwardingReply(ForwardingReply m, Address sender) {
+    private void handleFReply(FReply m, Address sender) {
         Reply reply = REJECT;
         AMOCommand amoCommand = m.amoCommand();
         if (role == Role.PRIMARY && forwardingCommand != null &&
@@ -154,8 +154,7 @@ class PBServer extends Node {
         send(reply, m.sender());
     }
 
-    private void handleStateTransferRequest(StateTransferRequest m,
-                                            Address sender) {
+    private void handleSTRequest(STRequest m, Address sender) {
         View view = m.view();
         if (view.viewNum() > transferredViewNum) {
             transferredViewNum = view.viewNum();
@@ -165,12 +164,11 @@ class PBServer extends Node {
 //            LOGGER.info("  current  view: " + currentView);
 //            LOGGER.info("  same?        : " + sameView(m.view(), currentView));
             amoApplication = m.amoApplication();
-            send(new StateTransferReply(m.view()), sender);
+            send(new STReply(m.view()), sender);
         }
     }
 
-    private void handleStateTransferReply(StateTransferReply m,
-                                          Address sender) {
+    private void handleSTReply(STReply m, Address sender) {
         if (role == Role.PRIMARY && sameView(m.view(), currentView)) {
             transferring = false;
         }
@@ -188,19 +186,18 @@ class PBServer extends Node {
         set(t, PING_MILLIS);
     }
 
-    private void onForwardingRequestTimer(ForwardingRequestTimer t) {
-        if (!transferring && Objects.equals(t.forwardingRequest().amoCommand(),
-                forwardingCommand)) {
-            send(t.forwardingRequest(), t.backup());
-            set(t, FORWARDING_REQUEST_MILLIS);
+    private void onFRequestTimer(FRequestTimer t) {
+        if (!transferring && Objects.equals(t.fRequest().amoCommand(), forwardingCommand)) {
+            send(t.fRequest(), t.backup());
+            set(t, F_REQUEST_MILLIS);
         }
     }
 
-    private void onStateTransferTimer (StateTransferTimer t) {
+    private void onSTRequestTimer(STRequestTimer t) {
         Address backup = t.backup();
         if (Objects.equals(backup, currentView.backup())) {
-            send(new StateTransferRequest(amoApplication, currentView), backup);
-            set(t, STATE_TRANSFER_MILLIS);
+            send(new STRequest(amoApplication, currentView), backup);
+            set(t, ST_REQUEST_MILLIS);
         }
     }
 

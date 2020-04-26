@@ -24,16 +24,16 @@ final class ClientTimer implements Timer {
 
 // Your code here...
 @Data
-final class ForwardingRequestTimer implements Timer {
-    static final int FORWARDING_REQUEST_MILLIS = 50;
+final class FRequestTimer implements Timer {
+    static final int F_REQUEST_MILLIS = 50;
 
-    private final ForwardingRequest forwardingRequest;
+    private final FRequest fRequest;
     private final Address backup;
 }
 
 @Data
-final class StateTransferTimer implements Timer {
-    static final int STATE_TRANSFER_MILLIS = 50;
+final class STRequestTimer implements Timer {
+    static final int ST_REQUEST_MILLIS = 50;
 
     private final Address backup;
 }
