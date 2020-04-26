@@ -73,8 +73,12 @@ class PBClient extends Node implements Client {
        -----------------------------------------------------------------------*/
     private synchronized void handleReply(Reply m, Address sender) {
         // Your code here...
-        if (isPrimary(sender) && m.amoResult() != null &&
-                amoCommand.sequenceNum() == m.amoResult().sequenceNum()) {
+        if (m.amoResult() == null) {
+            send(new GetView(), viewServer);
+            return;
+        }
+
+        if (isPrimary(sender) && amoCommand.sequenceNum() == m.amoResult().sequenceNum()) {
             result = m.amoResult().result();
             notify();
         }
