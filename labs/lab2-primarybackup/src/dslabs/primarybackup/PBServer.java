@@ -35,6 +35,9 @@ class PBServer extends Node {
     private View currentView;
     private Role role;
 
+    private ForwardingRequest curForwardingRequest;
+    private ForwardingReply curForwardingReply;
+
     private boolean transferring;
     private int transferredViewNum;
 
@@ -72,18 +75,24 @@ class PBServer extends Node {
         //        LOGGER.info("  role: " + role);
         //        LOGGER.info("  request: " + m);
         AMOCommand amoCommand = m.amoCommand();
-        if (role == Role.PRIMARY && !transferring) {
-            Address currentBackup = currentView.backup();
-            if (currentBackup == null) {
+        if (role == Role.PRIMARY) {
+            if (amoApplication.alreadyExecuted(amoCommand)) {
                 AMOResult amoResult = runAMOCommand(amoCommand);
                 send(new Reply(amoResult), sender);
-            } else {
-                forwardingCommands.add(amoCommand);
-                ForwardingRequest forwardingRequest =
-                        new ForwardingRequest(amoCommand, sender);
-                send(forwardingRequest, currentBackup);
-                set(new ForwardingRequestTimer(forwardingRequest,
-                        currentBackup), FORWARDING_REQUEST_MILLIS);
+            } else if (!transferring) {
+                Address currentBackup = currentView.backup();
+                if (currentBackup == null) {
+                    AMOResult amoResult = runAMOCommand(amoCommand);
+                    send(new Reply(amoResult), sender);
+                } else {
+                    if (curForwardingRequest == null) {
+                        forwardingCommands.add(amoCommand);
+                        curForwardingRequest = new ForwardingRequest(amoCommand, sender);
+                        send(curForwardingRequest, currentBackup);
+                        set(new ForwardingRequestTimer(curForwardingRequest,
+                                currentBackup), FORWARDING_REQUEST_MILLIS);
+                    }
+                }
             }
         } else {
             send(REJECT, sender);
@@ -132,20 +141,20 @@ class PBServer extends Node {
 
     private void handleForwardingReply(ForwardingReply m, Address sender) {
         Reply reply = REJECT;
-        if (role == Role.PRIMARY &&
+        if (role == Role.PRIMARY && curForwardingRequest != null &&
                 Objects.equals(sender, currentView.backup()) && m.accept()) {
             AMOCommand amoCommand = m.amoCommand();
             AMOResult amoResult = runAMOCommand(amoCommand);
             forwardingCommands.remove(amoCommand);
             reply = new Reply(amoResult);
         }
+        curForwardingRequest = null;
         send(reply, m.sender());
     }
 
     private void handleStateTransferRequest(StateTransferRequest m,
                                             Address sender) {
         View view = m.view();
-        boolean accept = false;
         if (view.viewNum() > transferredViewNum) {
             transferredViewNum = view.viewNum();
             //            LOGGER.info("handleStateTransferRequest -> transfer");
@@ -158,15 +167,13 @@ class PBServer extends Node {
             //                        m.amoCommands().get(m.amoCommands().size() - 1));
             //            }
             amoApplication = m.amoApplication();
-            accept = true;
+            send(new StateTransferReply(true, m.view()), sender);
         }
-        send(new StateTransferReply(accept, m.view()), sender);
     }
 
     private void handleStateTransferReply(StateTransferReply m,
                                           Address sender) {
-        if (role == Role.PRIMARY && sameView(m.view(), currentView) &&
-                m.accept()) {
+        if (role == Role.PRIMARY && sameView(m.view(), currentView)) {
             transferring = false;
         }
     }
@@ -185,7 +192,7 @@ class PBServer extends Node {
     }
 
     private void onForwardingRequestTimer(ForwardingRequestTimer t) {
-        if (forwardingCommands.contains(t.forwardingRequest().amoCommand())) {
+        if (!transferring && forwardingCommands.contains(t.forwardingRequest().amoCommand())) {
             send(t.forwardingRequest(), t.backup());
             set(t, FORWARDING_REQUEST_MILLIS);
         }
