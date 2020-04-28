@@ -4,7 +4,25 @@ Partner 1 name and net ID: Chanwut Kittivorawong chanwutk
 Partner 2 name and net ID: Podshara Chanrungmaneekul shon2
 
 Brief description of design:
-
-
+- ViewServer
+  - Start by assigning the first and second servers to ping to be the primary and secondary.
+  - periodicly check for alive servers with onPingCheckTimer
+    - adjust view if either primary or secondary are dead in the cycle (and only when the current primary already acknowledge the current view)
+- PBClient
+  - periodicly check for the correct view from the view server
+  - To run command, it sends the command to the primary and wait until the primary to reply (or there is a change in view then resends the command to the new primary)
+- PBServer
+  - primary:
+    - receive a command from clients
+        -> forward (using timer) to backup to run
+        -> once receive the confirmation from the backup, execute the command and reply back to the client.
+    - when the backup is changed, transfer it current state (whole application) to the new backup (using timer).
+    - do not accept any new command when in the process of transferring (wait for the backup to confirm that the transfer is done).
+    - do not accept any new command when in the process of forwarding a command to the backup (wait for the confirmation from the backup).
+    - while transferring, do not acknowledge the view server that it knows about the current view (ping with old view number) to ensure that view does not change again.
+  - backup:
+    - on start, wait for the primary to transfer the state, and reply with accept message that transferring is done.
+    - do not accept any request from clients.
+    - receive forwarding request from the primary and reply back for the confirmation that backup's state is updated.
 Hours spent on the lab:
-
+40 Hours
