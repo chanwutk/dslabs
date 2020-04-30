@@ -4,10 +4,8 @@ import dslabs.framework.Address;
 import dslabs.framework.Application;
 import dslabs.framework.Command;
 import dslabs.framework.Result;
-import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
-import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NonNull;
@@ -22,7 +20,7 @@ public final class AMOApplication<T extends Application>
     @Getter @NonNull private final T application;
 
     // Your code here...
-    private final Map<Address, CurrentAMOResult> results = new HashMap<>();
+    private final Map<Address, AMOResult> results = new HashMap<>();
 
     @Override
     public AMOResult execute(Command command) {
@@ -34,13 +32,15 @@ public final class AMOApplication<T extends Application>
 
         // Your code here...
         Address sender = amoCommand.sender();
-        if (!alreadyExecuted(amoCommand)) {
-            int sequenceNum = amoCommand.sequenceNum();
-            Result result = application.execute(amoCommand.command());
-            AMOResult amoResult = new AMOResult(result, sender, sequenceNum);
-            results.put(sender, new CurrentAMOResult(amoResult, sequenceNum));
+        if (alreadyExecuted(amoCommand)) {
+            return results.get(sender);
         }
-        return results.get(sender).result();
+
+        int sequenceNum = amoCommand.sequenceNum();
+        Result result = application.execute(amoCommand.command());
+        AMOResult amoResult = new AMOResult(result, sender, sequenceNum);
+        results.put(sender, amoResult);
+        return amoResult;
     }
 
     public Result executeReadOnly(Command command) {
@@ -60,11 +60,5 @@ public final class AMOApplication<T extends Application>
         Address sender = amoCommand.sender();
         return results.containsKey(sender) &&
                 results.get(sender).sequenceNum() >= amoCommand.sequenceNum();
-    }
-
-    @Data
-    private static class CurrentAMOResult implements Serializable {
-        private final AMOResult result;
-        private final int sequenceNum;
     }
 }
