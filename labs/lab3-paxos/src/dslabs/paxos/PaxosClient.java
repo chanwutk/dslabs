@@ -42,6 +42,8 @@ public final class PaxosClient extends Node implements Client {
     @Override
     public synchronized void sendCommand(Command operation) {
         // Your code here...
+        assert(operation != null);
+
         sequenceNum++;
         AMOCommand amoCommand = new AMOCommand(operation, address(), sequenceNum);
         PaxosRequest paxosRequest = new PaxosRequest(amoCommand);
