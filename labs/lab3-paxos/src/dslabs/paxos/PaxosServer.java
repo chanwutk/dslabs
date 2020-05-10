@@ -4,6 +4,10 @@ import dslabs.framework.Address;
 import dslabs.framework.Application;
 import dslabs.framework.Command;
 import dslabs.framework.Node;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
 
@@ -14,6 +18,22 @@ public class PaxosServer extends Node {
     private final Address[] servers;
 
     // Your code here...
+    private Application app;
+    // Replica
+    private List<> requests;
+    private Set<> replica_proposals;
+    private Set<> decisions;
+    private int slot_in;
+    private int slot_out;
+    // Acceptor
+    private Integer ballot_num;
+    private Set<> accpeted; /**/
+    // Leader
+    private Set<> scout_accpetors;
+    private Set<> commander_accpetors;
+    private int slot_num;
+    private boolean is_leader;
+    private Map<> leader_proposals;
 
     /* -------------------------------------------------------------------------
         Construction and Initialization
@@ -23,12 +43,21 @@ public class PaxosServer extends Node {
         this.servers = servers;
 
         // Your code here...
+        this.app = app;
+
     }
 
 
     @Override
     public void init() {
         // Your code here...
+        // Replica
+        slot_in = slot_out = 1;
+        this.requests = new ArrayList<>();
+        // Acceptor
+        this.ballot_num = null;
+        this.accepted = new Set<>();
+        this.acceptors = new Set<>();
     }
 
     /* -------------------------------------------------------------------------
@@ -101,18 +130,95 @@ public class PaxosServer extends Node {
        -----------------------------------------------------------------------*/
     private void handlePaxosRequest(PaxosRequest m, Address sender) {
         // Your code here...
+        // queuing message
+        // Replica
+        send(new ProposeMessage(this.slot_in ,m.amoCommand()), leader);
     }
 
     // Your code here...
+    // Replica
+    private void handleDecisionMessage(DecisionMessage m, Address sender) {
 
+    }
 
+    // Acceptor
+    private void handleP1aMessage(P1aMessage m, Address sender) {
+        if (m.ballot_num > this.ballot_num) {
+            this.ballot_num = m.ballot_num;
+        }
+        send(new P1bMessage(this.ballot_num, accpeted), sender);
+    }
+
+    private void handleP2aMessage(P2aMessage m, Address sender) {
+        if (m.ballot_num == this.ballot_num) {
+            accpeted.add();
+        }
+        send(new P2bMessage(this.ballot_num, ), sender);
+    }
+
+    // Leader: Scout
+    private void handleP1bMessage(P1bMessage m, Address sender) {
+        if (this.ballot_num == m.ballot_num && is_waiting) {
+            // remove m from waiting
+            if (this.accpetors.size() > ...) {
+                // Adopted message
+                Map pmax = new HashMap<>();
+                for (pv : m.accepted) {
+                    if (!pmax.containsKey(pv.slot_num) || pmax.get(pv.slot_num) < pv.ballot_num) {
+                        pmax.put(pv.slot_num, pv.ballot_num);
+                        this.leader_proposals.put(pv.slot_num, pv.command);
+                    }
+                }
+
+                for (sn : this.leader_proposals) {
+                    // Commander
+                    // Broadcast P2aMessage
+                    // Add waitlist for this slot num
+                }
+            }
+        } else {
+            // Preempted message
+        }
+    }
+
+    // Leader: Commander
+    private void handleP2bMessage(P2bMessage m, Address sender) {
+        if (this.ballot_num == m.ballot_num && is_waiting) {
+            // remove m from waiting
+            if (this.accpetors.size() > ...) {
+                // Decision message
+                for (r : replicas) {
+                    send(new DecisionMessage(), r);
+                }
+            }
+        } else {
+            // Preempted message
+        }
+    }
+
+    // Leader
+    private void handleProposeMessage(ProposeMessage m, Address sender) {
+        if (!this.leader_proposals.containsKey(m.slot_num())) {
+            this.leader_proposals.put(m.slot_num(), m.amoCommand());
+            // Commander
+            // Broadcast P2aMessage
+            // Add waitlist for this slot num
+        }
+    }
     /* -------------------------------------------------------------------------
         Timer Handlers
        -----------------------------------------------------------------------*/
     // Your code here...
+    private void onHeartbeatCheckTimer(HeartbeatCheckTimer t) {
+        //elect the leader
+
+        //broadcast a message
+    }
+
 
     /* -------------------------------------------------------------------------
         Utils
        -----------------------------------------------------------------------*/
     // Your code here...
+
 }
