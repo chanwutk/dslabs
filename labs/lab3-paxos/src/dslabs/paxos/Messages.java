@@ -1,6 +1,7 @@
 package dslabs.paxos;
 
 import dslabs.atmostonce.AMOCommand;
+import dslabs.framework.Address;
 import dslabs.framework.Message;
 import lombok.Data;
 import lombok.NonNull;
@@ -25,6 +26,7 @@ class P1aMessage implements Message {
 @Data
 class P1bMessage implements Message {
     @NonNull private final BallotNum ballot_num;
+    private final boolean accepted;
 }
 
 @Data
@@ -40,10 +42,22 @@ class P2bMessage implements Message {
 @Data
 class Heartbeat implements Message {
     @NonNull private final BallotNum ballot_num;
-    private final int min_processed;
+    private final int min_executed;
 }
 
 @Data
 class HeartbeatResponse implements Message {
-    private final int processed;
+    private final int executed;
+}
+
+@Data
+class BallotNum implements Comparable<BallotNum> {
+    private final int number;
+    @NonNull private final Address address;
+
+    @Override
+    public int compareTo(BallotNum o) {
+        return number == o.number ? address.compareTo(o.address) :
+                number - o.number;
+    }
 }

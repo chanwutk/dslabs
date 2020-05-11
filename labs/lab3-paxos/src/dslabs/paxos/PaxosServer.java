@@ -9,12 +9,18 @@ import dslabs.framework.Command;
 import dslabs.framework.Node;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import lombok.Data;
 import lombok.EqualsAndHashCode;
+import lombok.NonNull;
 import lombok.ToString;
+
+import static dslabs.paxos.HeartbeatCheckTimer.HB_CHECK_TIMER;
+import static dslabs.paxos.HeartbeatTimer.HB_TIMER;
 
 
 @ToString(callSuper = true)
@@ -23,14 +29,24 @@ public class PaxosServer extends Node {
     private final Address[] servers;
 
     // Your code here...
+    // server's amo application
     private AMOApplication<Application> amoApplication;
-    private Map<Integer, PaxosLog> paxos_log;
+    // log for proposal
+    private Map<Integer, PaxosLogEntry> paxos_log;
+    // index of first non-cleared slot
     private int slot_in;
+    // index of last executed slot
+    private int slot_executed;
+    // index of last entry in the log
     private int slot_out;
+    // current leader known by this server
     private Address leader;
-    private boolean is_leader_active;
-    private HeartBeat current_hearbeat;
-    private int processed;
+    // if the current leader is active in the current check timer cycle
+    private boolean is_leader_alive;
+    // previously received valid heartbeat
+    private Heartbeat prev_heartbeat;
+    // if this server is scouting
+    private boolean is_scouting;
 
     // Replica
     private List<AMOCommand> requests;
@@ -46,8 +62,8 @@ public class PaxosServer extends Node {
     private Set<> commander_accpetors;
     private int slot_num;
     private Map<> leader_proposals;
-    private int min_processed;
-    private Set<Address> heartbeat_responsed;
+    private int min_slot_executed;
+    private Set<Address> heartbeat_responded;
     private BallotNum leader_ballot;
 
     /* -------------------------------------------------------------------------
@@ -66,10 +82,13 @@ public class PaxosServer extends Node {
     @Override
     public void init() {
         // Your code here...
-        this.slot_in = this.slot_out = 1;
-        this.paxos_log = new HashMap<Integer, PaxosLog>();
+        this.slot_in = 1;
+        this.slot_executed = this.slot_out = 0;
+        this.paxos_log = new HashMap<>();
         this.leader = null;
-        this.is_leader_active = false;
+        this.is_leader_alive = false;
+        this.prev_heartbeat = new Heartbeat(new BallotNum(-1, address()), 0);
+        this.is_scouting = false;
 
         // Replica
         this.requests = new ArrayList<>();
@@ -79,10 +98,10 @@ public class PaxosServer extends Node {
         this.acceptors = new Set<>();
 
         // TODO: leader -> move to the place where init leader
-        this.servers_processed = new HashMap<>();
+        this.heartbeat_responded = new HashSet<>();
+        set(new HeartbeatTimer(), HB_TIMER);
 
-        set(new HeartBeatTimer(), HB_TIMER);
-        set(new HeartBeatCheckTimer(), HB_CHECK_TIMER);
+        set(new HeartbeatCheckTimer(), HB_CHECK_TIMER);
     }
 
     /* -------------------------------------------------------------------------
@@ -183,14 +202,16 @@ public class PaxosServer extends Node {
 
     // Acceptor
     private void handleP1aMessage(P1aMessage m, Address sender) {
-        if (m.ballot_num > this.ballot_num) {
-            this.ballot_num = m.ballot_num;
+        boolean accepted = false;
+        if (m.ballot_num().compareTo(ballot_num) >= 0) {
+            this.ballot_num = m.ballot_num();
+            accepted = true;
         }
-        send(new P1bMessage(this.ballot_num, accpeted), sender);
+        send(new P1bMessage(this.ballot_num, accepted), sender);
     }
 
     private void handleP2aMessage(P2aMessage m, Address sender) {
-        if (m.ballot_num == this.ballot_num) {
+        if (m.ballot_num() == this.ballot_num) {
             accpeted.add();
         }
         send(new P2bMessage(this.ballot_num, ), sender);
@@ -198,7 +219,7 @@ public class PaxosServer extends Node {
 
     // Leader: Scout
     private void handleP1bMessage(P1bMessage m, Address sender) {
-        if (this.ballot_num == m.ballot_num && is_waiting) {
+        if (Objects.equals(m.ballot_num(), ballot_num) && is_scouting) {
             // remove m from waiting
             if (this.accpetors.size() > ...) {
                 // Adopted message
@@ -261,21 +282,30 @@ public class PaxosServer extends Node {
     }
 
     private void handleHeartbeatResponse(HeartbeatResponse m, Address sender) {
-        if (Objects.equals(leader, address())) {
-            min_processed = Math.min(min_processed, m.processed());
-            heartbeat_responsed.add(sender);
+        if (isLeader() && m.executed() >= slot_in - 1) {
+            // only leader receives heartbeat responses
+            // and ignore outdated response
+            min_slot_executed = Math.min(min_slot_executed, m.executed());
+            heartbeat_responded.add(sender);
         }
     }
 
     // Follower
     private void handleHeartbeat(Heartbeat m, Address sender) {
-        if(current_heartbeat == null || m.ballot_num() >= current_hearbeat.ballot_num()) {
-            current_hearbeat = m;
-            leader = sender;
-            is_leader_active = true;
-            garbageCollect(m.min_processed());
-            send(new HeartbeatResponse(processed), leader);
+        if (m.ballot_num().compareTo(prev_heartbeat.ballot_num()) < 0) {
+            // heartbeat from old leader
+            return;
         }
+        if (m.min_executed() < slot_in - 1) {
+            // outdated heartbeat
+            // TODO: if checking for oudated heartbeat, what else needs to be checked?
+            return;
+        }
+        prev_heartbeat = m;
+        leader = sender;
+        is_leader_alive = true;
+        garbageCollect(m.min_executed());
+        send(new HeartbeatResponse(slot_executed), leader);
     }
 
     /* -------------------------------------------------------------------------
@@ -283,14 +313,18 @@ public class PaxosServer extends Node {
        -----------------------------------------------------------------------*/
     // Your code here...
     private void onHeartbeatTimer(HeartbeatTimer t) {
-        if (Objects.equals(address(), leader)) {
-            if (heartbeat_responsed.size() == servers.size() - 1) {
-                garbageCollect(min_processed);
-                heartbeat_responsed.clear();
-                min_processed = Integer.MAX_VALUE;
+        if (isLeader()) {
+            // only leader broadcasts heartbeats
+            if (heartbeat_responded.size() == servers.length - 1) {
+                // heard back from all other servers
+                garbageCollect(min_slot_executed);
+                heartbeat_responded.clear();
+                min_slot_executed = Integer.MAX_VALUE;
             }
+
+            // broadcasts heartbeats
             for (Address sv : servers) {
-                if (!Objects.equals(address, sv)) {
+                if (!Objects.equals(address(), sv)) {
                     send(new Heartbeat(this.leader_ballot, slot_in - 1), sv);
                 }
             }
@@ -299,22 +333,28 @@ public class PaxosServer extends Node {
     }
 
     private void onHeartbeatCheckTimer(HeartbeatCheckTimer t) {
-        //elect the leader
-
-        // broadcast a P1aMessage
         Address address = address();
-        boolean is_leader = Objects.equals(address, leader);
-        assert(!is_leader || is_leader_active);
-        if (!is_leader_active) {
+        assert (!isLeader() || is_leader_alive);
+        if (!is_leader_alive) {
+            // try to be leader
+            // generate new ballot
+            // TODO: (after done with P1a) revise how to generate a new ballot
+            ballot_num = incrementBallot(ballot_num);
+
+            // scout P2aMessage
+            is_scouting = true;
             for (Address sv : servers) {
                 if (!Objects.equals(address, sv)) {
-                    // TODO: generate new ballot?
-                    send(new P1aMessage(this.ballot_num), sv);
+                    send(new P1aMessage(ballot_num), sv);
                 }
             }
-            // TODO: send P1a to self?
-        } else if (!is_leader) {
-            is_leader_active = false;
+
+            // scout P1aMessage to itself
+            handleP1aMessage(new P1aMessage(ballot_num), address);
+        } else if (!isLeader()) {
+            // for follower with active leader
+            // reset leader status for the next checking period
+            is_leader_alive = false;
         }
         set(t, HB_CHECK_TIMER);
     }
@@ -351,32 +391,26 @@ public class PaxosServer extends Node {
     }
 
     private void garbageCollect(int upto) {
-        assert(upto <= processed);
-        assert(upto >= slot_in);
-        for (; slot_in < upto; slot_in++) {
+        assert (upto <= slot_executed);
+        assert (slot_in - 1 <= upto);  // allow not garbage collecting
+        for (; slot_in <= upto; slot_in++) {
             paxos_log.remove(slot_in);
         }
     }
 
+    private boolean isLeader() {
+        return Objects.equals(address(), leader);
+    }
 
-    @Data
-    private static class PaxosLog {
-        @NonNull private final AmoCommand amoCommand;
-        private final AMOResult amoResult;
-        @NonNull private final PaxosLogSlotStatus status;
-        private final int id;
+    private BallotNum incrementBallot(BallotNum ballot_num) {
+        return new BallotNum(ballot_num.number() + 1, address());
     }
 
     @Data
-    private static class BallotNum implements Comparable<BallotNum> {
-        private final int ballot_num;
-        @NonNull private final Address address;
-
-        @Override
-        public int compareTo(BallotNum b1, BallotNum b2) {
-            return b1.ballot_num == b2.ballot_num
-                ? b1.address.compareTo(b2.address)
-                : b1.ballot_num - b2.ballot_num;
-        }
+    private static class PaxosLogEntry {
+        @NonNull private final AMOCommand amoCommand;
+        private final AMOResult amoResult;
+        @NonNull private final PaxosLogSlotStatus status;
+        private final int id;
     }
 }
