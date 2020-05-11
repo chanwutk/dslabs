@@ -1,12 +1,17 @@
 package dslabs.paxos;
 
+import dslabs.atmostonce.AMOApplication;
+import dslabs.atmostonce.AMOCommand;
+import dslabs.atmostonce.AMOResult;
 import dslabs.framework.Address;
 import dslabs.framework.Application;
 import dslabs.framework.Command;
 import dslabs.framework.Node;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
@@ -18,9 +23,9 @@ public class PaxosServer extends Node {
     private final Address[] servers;
 
     // Your code here...
-    private Application app;
+    private AMOApplication<Application> amoApplication;
     // Replica
-    private List<> requests;
+    private List<AMOCommand> requests;
     private Set<> replica_proposals;
     private Set<> decisions;
     private int slot_in;
@@ -43,7 +48,7 @@ public class PaxosServer extends Node {
         this.servers = servers;
 
         // Your code here...
-        this.app = app;
+        this.amoApplication = new AMOApplication<>(app);
 
     }
 
@@ -52,7 +57,7 @@ public class PaxosServer extends Node {
     public void init() {
         // Your code here...
         // Replica
-        slot_in = slot_out = 1;
+        this.slot_in = this.slot_out = 1;
         this.requests = new ArrayList<>();
         // Acceptor
         this.ballot_num = null;
@@ -132,7 +137,7 @@ public class PaxosServer extends Node {
         // Your code here...
         // queuing message
         // Replica
-        send(new ProposeMessage(this.slot_in ,m.amoCommand()), leader);
+        this.requests.add(m.amoCommand());
     }
 
     // Your code here...
@@ -212,7 +217,7 @@ public class PaxosServer extends Node {
     private void onHeartbeatCheckTimer(HeartbeatCheckTimer t) {
         //elect the leader
 
-        //broadcast a message
+        //broadcast a P1aMessage
     }
 
 
@@ -220,5 +225,29 @@ public class PaxosServer extends Node {
         Utils
        -----------------------------------------------------------------------*/
     // Your code here...
+    // Replica
+    private void propose() {
+        while (!this.requests.isEmpty()) {
+            if (!this.decisions.contains(this.slot_in)) {
+                AMOCommand cmd = this.requests.remove(0);
+                this.replica_proposals.put(this.slot_in, cmd);
+                send(new ProposeMessage(), leader);
+            }
+            this.slot_in++;
+        }
+    }
 
+    private void perform(AMOCommand cmd) {
+        for (int s = 1; s < this.slot_out; s++) {
+            if (Objects.equals(this.decisions.get(s), cmd)) {
+                AMOResult ret = runAMOCommand(cmd);
+                send(ret, client);
+            }
+        }
+        this.slot_out++;
+    }
+
+    private AMOResult runAMOCommand(AMOCommand amoCommand) {
+        return amoApplication.execute(amoCommand);
+    }
 }
