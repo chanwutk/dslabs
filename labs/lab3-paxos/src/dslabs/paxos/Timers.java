@@ -17,5 +17,10 @@ final class ClientTimer implements Timer {
 // Your code here...
 @Data
 final class HeartbeatCheckTimer implements Timer {
-    static final int PING_CHECK_TIMER = 100;
+    static final int HB_CHECK_TIMER = 100;
+}
+
+@Data
+final class HeartbeatTimer implements Timer {
+    static final int HB_TIMER = 25;
 }

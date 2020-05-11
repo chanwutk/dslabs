@@ -19,20 +19,31 @@ class DecisionMessage implements Message {
 
 @Data
 class P1aMessage implements Message {
-    @NonNull private final int ballot_num;
+    @NonNull private final BallotNum ballot_num;
 }
 
 @Data
 class P1bMessage implements Message {
-    @NonNull private final int ballot_num;
+    @NonNull private final BallotNum ballot_num;
 }
 
 @Data
 class P2aMessage implements Message {
-    @NonNull private final int ballot_num;
+    @NonNull private final BallotNum ballot_num;
 }
 
 @Data
 class P2bMessage implements Message {
-    @NonNull private final int ballot_num;
+    @NonNull private final BallotNum ballot_num;
+}
+
+@Data
+class Heartbeat implements Message {
+    @NonNull private final BallotNum ballot_num;
+    private final int min_processed;
+}
+
+@Data
+class HeartbeatResponse implements Message {
+    private final int processed;
 }
