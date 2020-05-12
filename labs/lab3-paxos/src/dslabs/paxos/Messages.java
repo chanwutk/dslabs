@@ -3,8 +3,11 @@ package dslabs.paxos;
 import dslabs.atmostonce.AMOCommand;
 import dslabs.framework.Address;
 import dslabs.framework.Message;
+import java.util.Map;
 import lombok.Data;
 import lombok.NonNull;
+
+import static dslabs.paxos.PaxosLogSlotStatus.CHOSEN;
 
 // Your code here...
 @Data
@@ -26,6 +29,7 @@ class P1aMessage implements Message {
 @Data
 class P1bMessage implements Message {
     @NonNull private final BallotNum ballot_num;
+    @NonNull private final Map<Integer, PaxosLogEntry> log;
     private final boolean accepted;
 }
 
@@ -67,8 +71,21 @@ class BallotNum implements Comparable<BallotNum> {
 }
 
 @Data
-class PaxosLogEntry {
+class PaxosLogEntry implements Comparable<PaxosLogEntry> {
     @NonNull private final AMOCommand amoCommand;
     @NonNull private final PaxosLogSlotStatus status;
     @NonNull private final BallotNum ballot_num;
+
+    @Override
+    public int compareTo(PaxosLogEntry o) {
+        return ballot_num.compareTo(o.ballot_num);
+    }
+
+    public PaxosLogEntry choose() {
+        return new PaxosLogEntry(amoCommand, CHOSEN, ballot_num);
+    }
+
+    public PaxosLogEntry increment(BallotNum ballot_num_) {
+        return new PaxosLogEntry(amoCommand, status, ballot_num_);
+    }
 }
