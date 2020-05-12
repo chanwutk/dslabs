@@ -33,6 +33,8 @@ public class PaxosServer extends Node {
     private AMOApplication<Application> amoApplication;
     // log for proposal
     private Map<Integer, PaxosLogEntry> paxos_log;
+    // number of servers to reach majority
+    private final int majority;
     // index of first non-cleared slot
     private int slot_in;
     // index of last executed slot
@@ -45,8 +47,12 @@ public class PaxosServer extends Node {
     private boolean is_leader_alive;
     // previously received valid heartbeat
     private Heartbeat prev_heartbeat;
+
+    // Scouting Info
     // if this server is scouting
     private boolean is_scouting;
+    // set of servers that accept this server's p1a
+    private Set<Address> p1aAccepted;
 
     // Replica
     private List<AMOCommand> requests;
@@ -62,8 +68,11 @@ public class PaxosServer extends Node {
     private Set<> commander_accpetors;
     private int slot_num;
     private Map<> leader_proposals;
+    // minimum slot executed over the system
     private int min_slot_executed;
+    // set of servers that have responded the heartbeat over the current period
     private Set<Address> heartbeat_responded;
+    // ballot number when this leader was elected
     private BallotNum leader_ballot;
 
     /* -------------------------------------------------------------------------
@@ -75,7 +84,7 @@ public class PaxosServer extends Node {
 
         // Your code here...
         this.amoApplication = new AMOApplication<>(app);
-
+        majority = (servers.length / 2) + 1;  // allow even number of servers
     }
 
 
@@ -89,17 +98,18 @@ public class PaxosServer extends Node {
         this.is_leader_alive = false;
         this.prev_heartbeat = new Heartbeat(new BallotNum(-1, address()), 0);
         this.is_scouting = false;
+        this.p1aAccepted = new HashSet<>();
+        this.ballot_num = new BallotNum(0, address());
 
         // Replica
         this.requests = new ArrayList<>();
         // Acceptor
-        this.ballot_num = null;
         this.accepted = new Set<>();
         this.acceptors = new Set<>();
 
-        // TODO: leader -> move to the place where init leader
+        // Leader
         this.heartbeat_responded = new HashSet<>();
-        set(new HeartbeatTimer(), HB_TIMER);
+        // TODO: leader -> move to the place where init leader
 
         set(new HeartbeatCheckTimer(), HB_CHECK_TIMER);
     }
@@ -204,10 +214,19 @@ public class PaxosServer extends Node {
     private void handleP1aMessage(P1aMessage m, Address sender) {
         boolean accepted = false;
         if (m.ballot_num().compareTo(ballot_num) >= 0) {
+            // received higher ballot
             this.ballot_num = m.ballot_num();
             accepted = true;
         }
-        send(new P1bMessage(this.ballot_num, accepted), sender);
+
+        P1bMessage p1b = new P1bMessage(this.ballot_num, accepted);
+        if (Objects.equals(sender, address())) {
+            // response to self, bypassing network
+            handleP1bMessage(p1b, sender);
+        } else {
+            // response to other through network
+            send(p1b, sender);
+        }
     }
 
     private void handleP2aMessage(P2aMessage m, Address sender) {
@@ -219,35 +238,67 @@ public class PaxosServer extends Node {
 
     // Leader: Scout
     private void handleP1bMessage(P1bMessage m, Address sender) {
-        if (Objects.equals(m.ballot_num(), ballot_num) && is_scouting) {
-            // remove m from waiting
-            if (this.accpetors.size() > ...) {
-                // Adopted message
-                Map pmax = new HashMap<>();
-                for (pv : m.accepted) {
-                    if (!pmax.containsKey(pv.slot_num) || pmax.get(pv.slot_num) < pv.ballot_num) {
-                        pmax.put(pv.slot_num, pv.ballot_num);
-                        this.leader_proposals.put(pv.slot_num, pv.command);
-                    }
-                }
-
-                for (sn : this.leader_proposals) {
-                    // Commander
-                    // Broadcast P2aMessage
-                    // Add waitlist for this slot num
-                }
-            }
-        } else {
-            // Preempted message
-            if (m.ballot_num > this.ballot_num) {
-                this.ballot_num++;
-                for (Address sv : servers) {
-                    if (!Objects.equals(address, sv)) {
-                        send(new P1aMessage(this.ballot_num), sv);
-                    }
-                }
-            }
+        if (!is_scouting) {
+            return;
         }
+
+        int cmp = m.ballot_num().compareTo(ballot_num);
+        if (cmp == 0 && m.accepted()) {
+            // accepted
+            p1aAccepted.add(sender);
+            if (isMajority(p1aAccepted.size())) {
+                // majority accepted -> becomes leader
+                is_scouting = false;
+                p1aAccepted.clear();
+                leader = address();
+
+                // leader init
+                leader_ballot = ballot_num;
+                heartbeat_responded.clear();
+
+                // start heartbeat
+                onHeartbeatTimer(new HeartbeatTimer(ballot_num));
+            }
+        } else if (cmp > 0) {
+            // received higher ballot number -> stop trying to be leader
+            is_scouting = false;
+            p1aAccepted.clear();
+            leader = null;
+
+            // update ballot_num
+            ballot_num = m.ballot_num();
+        }
+//        MICK: I did not understand this, so I rewrote it from my understanding
+//        if (Objects.equals(m.ballot_num(), ballot_num) && is_scouting) {
+//            // remove m from waiting
+//            if (this.accpetors.size() > ...){
+//                // Adopted message
+//                Map pmax = new HashMap<>();
+//                for (pv : m.accepted) {
+//                    if (!pmax.containsKey(pv.slot_num) ||
+//                            pmax.get(pv.slot_num) < pv.ballot_num) {
+//                        pmax.put(pv.slot_num, pv.ballot_num);
+//                        this.leader_proposals.put(pv.slot_num, pv.command);
+//                    }
+//                }
+//
+//                for (sn : this.leader_proposals) {
+//                    // Commander
+//                    // Broadcast P2aMessage
+//                    // Add waitlist for this slot num
+//                }
+//            }
+//        } else {
+//            // Preempted message
+//            if (m.ballot_num > this.ballot_num) {
+//                this.ballot_num++;
+//                for (Address sv : servers) {
+//                    if (!Objects.equals(address, sv)) {
+//                        send(new P1aMessage(this.ballot_num), sv);
+//                    }
+//                }
+//            }
+//        }
     }
 
     // Leader: Commander
@@ -298,7 +349,7 @@ public class PaxosServer extends Node {
         }
         if (m.min_executed() < slot_in - 1) {
             // outdated heartbeat
-            // TODO: if checking for oudated heartbeat, what else needs to be checked?
+            // TODO: if checking for outdated heartbeat, what else needs to be checked?
             return;
         }
         prev_heartbeat = m;
@@ -313,20 +364,22 @@ public class PaxosServer extends Node {
        -----------------------------------------------------------------------*/
     // Your code here...
     private void onHeartbeatTimer(HeartbeatTimer t) {
-        if (isLeader()) {
-            // only leader broadcasts heartbeats
-            if (heartbeat_responded.size() == servers.length - 1) {
-                // heard back from all other servers
-                garbageCollect(min_slot_executed);
-                heartbeat_responded.clear();
-                min_slot_executed = Integer.MAX_VALUE;
-            }
+        if (!isLeader() || !Objects.equals(t.leader_ballot(), leader_ballot)) {
+            // no longer leader or outdated timer
+            return;
+        }
 
-            // broadcasts heartbeats
-            for (Address sv : servers) {
-                if (!Objects.equals(address(), sv)) {
-                    send(new Heartbeat(this.leader_ballot, slot_in - 1), sv);
-                }
+        if (heartbeat_responded.size() == servers.length - 1) {
+            // heard back from all other servers
+            garbageCollect(min_slot_executed);
+            heartbeat_responded.clear();
+            min_slot_executed = Integer.MAX_VALUE;
+        }
+
+        // broadcasts heartbeats
+        for (Address sv : servers) {
+            if (!Objects.equals(address(), sv)) {
+                send(new Heartbeat(this.leader_ballot, slot_in - 1), sv);
             }
         }
         set(t, HB_TIMER);
@@ -342,6 +395,7 @@ public class PaxosServer extends Node {
             ballot_num = incrementBallot(ballot_num);
 
             // scout P2aMessage
+            p1aAccepted.clear();
             is_scouting = true;
             for (Address sv : servers) {
                 if (!Objects.equals(address, sv)) {
@@ -404,6 +458,10 @@ public class PaxosServer extends Node {
 
     private BallotNum incrementBallot(BallotNum ballot_num) {
         return new BallotNum(ballot_num.number() + 1, address());
+    }
+
+    private boolean isMajority(int num_servers) {
+        return num_servers >= majority;
     }
 
     @Data

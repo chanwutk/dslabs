@@ -1,6 +1,5 @@
 package dslabs.paxos;
 
-import dslabs.atmostonce.AMOCommand;
 import dslabs.framework.Timer;
 import lombok.Data;
 import lombok.NonNull;
@@ -23,4 +22,6 @@ final class HeartbeatCheckTimer implements Timer {
 @Data
 final class HeartbeatTimer implements Timer {
     static final int HB_TIMER = 25;
+
+    @NonNull private final BallotNum leader_ballot;
 }
