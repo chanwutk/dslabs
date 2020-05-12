@@ -9,7 +9,7 @@ import lombok.NonNull;
 // Your code here...
 @Data
 class ProposeMessage implements Message {
-    @NonNull private final int slot_num;
+    @NonNull private final int slot;
     @NonNull private final AMOCommand amoCommand;
 }
 
@@ -32,11 +32,15 @@ class P1bMessage implements Message {
 @Data
 class P2aMessage implements Message {
     @NonNull private final BallotNum ballot_num;
+    @NonNull private final AMOCommand amoCommand;
+    private final int slot;
 }
 
 @Data
 class P2bMessage implements Message {
-    @NonNull private final BallotNum ballot_num;
+    @NonNull private final PaxosLogEntry entry;
+    private final int slot;
+    private final boolean accepted;
 }
 
 @Data
@@ -60,4 +64,11 @@ class BallotNum implements Comparable<BallotNum> {
         return number == o.number ? address.compareTo(o.address) :
                 number - o.number;
     }
+}
+
+@Data
+class PaxosLogEntry {
+    @NonNull private final AMOCommand amoCommand;
+    @NonNull private final PaxosLogSlotStatus status;
+    @NonNull private final BallotNum ballot_num;
 }

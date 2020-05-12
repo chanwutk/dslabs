@@ -84,7 +84,7 @@ public class PaxosServer extends Node {
 
         // Your code here...
         this.amoApplication = new AMOApplication<>(app);
-        majority = (servers.length / 2) + 1;  // allow even number of servers
+        majority = (servers.length / 2) + 1;
     }
 
 
@@ -230,10 +230,48 @@ public class PaxosServer extends Node {
     }
 
     private void handleP2aMessage(P2aMessage m, Address sender) {
-        if (m.ballot_num() == this.ballot_num) {
-            accpeted.add();
+        BallotNum m_ballot_num = m.ballot_num();
+        if (m_ballot_num.compareTo(ballot_num) >= 0) {
+            // received higher ballot
+            this.ballot_num = m_ballot_num;
         }
-        send(new P2bMessage(this.ballot_num, ), sender);
+
+        int slot = m.slot();
+        boolean accepted = false;
+        PaxosLogEntry entry = new PaxosLogEntry(m.amoCommand(),
+                PaxosLogSlotStatus.ACCEPTED, m_ballot_num);
+        switch (status(slot)) {
+            case CLEARED:
+                // outdated message
+                return;
+            case CHOSEN:
+                // reject
+                break;
+            case EMPTY:
+                // accept: new slot
+                slot_out = Math.max(slot, slot_out);
+                paxos_log.put(slot, entry);
+                accepted = true;
+                break;
+            case ACCEPTED:
+                // accept?: slot has been proposed
+                BallotNum slot_ballot_num = paxos_log.get(slot).ballot_num();
+                if (m_ballot_num.compareTo(slot_ballot_num) >= 0) {
+                    // replace accepted log if not older
+                    paxos_log.put(slot, entry);
+                    accepted = true;
+                }
+                break;
+        }
+
+        P2bMessage p2b = new P2bMessage(paxos_log.get(slot), slot, accepted);
+        if (Objects.equals(sender, address())) {
+            // response to self, bypassing network
+            handleP2bMessage(p2b, sender);
+        } else {
+            // response to other through network
+            send(p2b, sender);
+        }
     }
 
     // Leader: Scout
@@ -268,37 +306,6 @@ public class PaxosServer extends Node {
             // update ballot_num
             ballot_num = m.ballot_num();
         }
-//        MICK: I did not understand this, so I rewrote it from my understanding
-//        if (Objects.equals(m.ballot_num(), ballot_num) && is_scouting) {
-//            // remove m from waiting
-//            if (this.accpetors.size() > ...){
-//                // Adopted message
-//                Map pmax = new HashMap<>();
-//                for (pv : m.accepted) {
-//                    if (!pmax.containsKey(pv.slot_num) ||
-//                            pmax.get(pv.slot_num) < pv.ballot_num) {
-//                        pmax.put(pv.slot_num, pv.ballot_num);
-//                        this.leader_proposals.put(pv.slot_num, pv.command);
-//                    }
-//                }
-//
-//                for (sn : this.leader_proposals) {
-//                    // Commander
-//                    // Broadcast P2aMessage
-//                    // Add waitlist for this slot num
-//                }
-//            }
-//        } else {
-//            // Preempted message
-//            if (m.ballot_num > this.ballot_num) {
-//                this.ballot_num++;
-//                for (Address sv : servers) {
-//                    if (!Objects.equals(address, sv)) {
-//                        send(new P1aMessage(this.ballot_num), sv);
-//                    }
-//                }
-//            }
-//        }
     }
 
     // Leader: Commander
@@ -324,8 +331,8 @@ public class PaxosServer extends Node {
 
     // Leader
     private void handleProposeMessage(ProposeMessage m, Address sender) {
-        if (!this.leader_proposals.containsKey(m.slot_num())) {
-            this.leader_proposals.put(m.slot_num(), m.amoCommand());
+        if (!this.leader_proposals.containsKey(m.slot())) {
+            this.leader_proposals.put(m.slot(), m.amoCommand());
             // Commander
             // Broadcast P2aMessage
             // Add waitlist for this slot num
@@ -462,13 +469,5 @@ public class PaxosServer extends Node {
 
     private boolean isMajority(int num_servers) {
         return num_servers >= majority;
-    }
-
-    @Data
-    private static class PaxosLogEntry {
-        @NonNull private final AMOCommand amoCommand;
-        private final AMOResult amoResult;
-        @NonNull private final PaxosLogSlotStatus status;
-        private final int id;
     }
 }
