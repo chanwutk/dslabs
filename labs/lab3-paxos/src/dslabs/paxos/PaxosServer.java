@@ -205,15 +205,20 @@ public class PaxosServer extends Node {
        -----------------------------------------------------------------------*/
     private void handlePaxosRequest(PaxosRequest m, Address sender) {
         // Your code here...
+        if (!isLeader()) {
+            // only leader accepts request
+            return;
+        }
         // queuing message
         // Replica
         this.requests.add(m.amoCommand());
+        // TODO: implement this
     }
 
     // Your code here...
     // Replica
     private void handleDecisionMessage(DecisionMessage m, Address sender) {
-
+        // TODO: implement this
     }
 
     // Acceptor
@@ -378,6 +383,7 @@ public class PaxosServer extends Node {
 
     // Leader
     private void handleProposeMessage(ProposeMessage m, Address sender) {
+        // TODO: implement this
         if (!this.leader_proposals.containsKey(m.slot())) {
             this.leader_proposals.put(m.slot(), m.amoCommand());
             // Commander
@@ -409,7 +415,7 @@ public class PaxosServer extends Node {
         prev_heartbeat = m;
         leader = sender;
         is_leader_alive = true;
-        garbageCollect(m.min_executed());
+        collectGarbage(m.min_executed());
         send(new HeartbeatResponse(slot_executed), leader);
     }
 
@@ -425,9 +431,9 @@ public class PaxosServer extends Node {
 
         if (heartbeat_responded.size() == servers.length - 1) {
             // heard back from all other servers
-            garbageCollect(min_slot_executed);
+            collectGarbage(min_slot_executed);
             heartbeat_responded.clear();
-            min_slot_executed = Integer.MAX_VALUE;
+            min_slot_executed = slot_executed;
         }
 
         // broadcasts heartbeats
@@ -498,7 +504,7 @@ public class PaxosServer extends Node {
         return amoApplication.execute(amoCommand);
     }
 
-    private void garbageCollect(int upto) {
+    private void collectGarbage(int upto) {
         assert (upto <= slot_executed);
         assert (slot_in - 1 <= upto);  // allow not garbage collecting
         for (; slot_in <= upto; slot_in++) {
