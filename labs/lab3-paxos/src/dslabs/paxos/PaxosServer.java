@@ -116,6 +116,7 @@ public class PaxosServer extends Node {
         this.is_scouting = false;
         this.p1aAccepted = new HashSet<>();
         this.ballot_num = this.global_ballot = new BallotNum(0, address);
+        this.on_going_commands = new HashSet<>();
 
         // Replica
         this.requests = new ArrayList<>();
@@ -565,6 +566,7 @@ public class PaxosServer extends Node {
         assert (upto <= slot_executed);
         assert (slot_in - 1 <= upto);  // allow not garbage collecting
         for (; slot_in <= upto; slot_in++) {
+            on_going_commands.remove(paxos_log.get(slot_in).amoCommand());
             paxos_log.remove(slot_in);
         }
     }
