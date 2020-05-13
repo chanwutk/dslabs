@@ -126,7 +126,6 @@ public class PaxosServer extends Node {
         // Leader
         this.heartbeat_responded = new HashSet<>();
         this.p2aAccepted = new HashMap<>();
-        // TODO: leader -> move to the place where init leader
 
         set(new HeartbeatCheckTimer(), HB_CHECK_TIMER);
     }
@@ -238,6 +237,7 @@ public class PaxosServer extends Node {
         ballot_num = global_ballot = incrementBallot(global_ballot);
         PaxosLogEntry entry = new PaxosLogEntry(amoCommand, ACCEPTED, ballot_num);
         paxos_log.put(++slot_out, entry);
+        p2aAccepted.put(slot_out, new HashSet<>());
         onP2aTimer(new P2aTimer(new P2aMessage(ballot_num, amoCommand, slot_out)));
     }
 
@@ -372,10 +372,6 @@ public class PaxosServer extends Node {
         int cmp = m_entry.compareTo(entry);
         if (cmp == 0 && m.accepted()) {
             // accepted
-            // TODO: when start voting clear this first
-            if (!p2aAccepted.containsKey(slot)) {
-                p2aAccepted.put(slot, new HashSet<>());
-            }
             p2aAccepted.get(slot).add(sender);
 
             if (isMajority(p2aAccepted.get(slot))) {
