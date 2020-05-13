@@ -25,3 +25,10 @@ final class HeartbeatTimer implements Timer {
 
     @NonNull private final BallotNum leader_ballot;
 }
+
+@Data
+final class P2aTimer implements Timer {
+    static final int P2A_TIMER = 50;
+
+    @NonNull private final P2aMessage p2a;
+}
