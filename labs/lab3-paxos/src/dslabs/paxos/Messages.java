@@ -18,7 +18,8 @@ class ProposeMessage implements Message {
 
 @Data
 class DecisionMessage implements Message {
-
+    @NonNull private final PaxosLogEntry entry;
+    @NonNull private final int slot;
 }
 
 @Data
@@ -36,7 +37,9 @@ class P1bMessage implements Message {
 @Data
 class P2aMessage implements Message {
     @NonNull private final BallotNum ballot_num;
-    @NonNull private final AMOCommand amoCommand;
+
+    // if null -> no-op
+    private final AMOCommand amoCommand;
     private final int slot;
 }
 
@@ -50,12 +53,13 @@ class P2bMessage implements Message {
 @Data
 class Heartbeat implements Message {
     @NonNull private final BallotNum ballot_num;
+    @NonNull private final Map<Integer, PaxosLogEntry> log;
     private final int min_executed;
 }
 
 @Data
 class HeartbeatResponse implements Message {
-    private final int executed;
+    private final int to_exec;
 }
 
 @Data
