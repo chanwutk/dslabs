@@ -155,6 +155,10 @@ public class PaxosServer extends Node {
         } else if (logSlotNum >= slot_out) {
             return EMPTY;
         }
+        if (paxos_log == null || paxos_log.get(logSlotNum) == null) {
+            System.out.println("-------" + slot_in + " " + slot_out + " " + logSlotNum + "-------");
+            System.out.println(paxos_log.keySet());
+        }
         return paxos_log.get(logSlotNum).status();
     }
 
@@ -240,9 +244,9 @@ public class PaxosServer extends Node {
         PaxosLogEntry entry = new PaxosLogEntry(amoCommand, ACCEPTED, ballot_num);
         paxos_log.put(slot_out, entry);
         p2aAccepted.put(slot_out, new HashSet<>());
-        onP2aTimer(
-                new P2aTimer(new P2aMessage(ballot_num, amoCommand, slot_out)));
         slot_out++;
+        onP2aTimer(
+                new P2aTimer(new P2aMessage(ballot_num, amoCommand, slot_out - 1)));
     }
 
     // Your code here...
@@ -408,8 +412,9 @@ public class PaxosServer extends Node {
         PaxosLogEntry m_entry = m.entry();
         PaxosLogEntry entry = paxos_log.get(slot);
         int cmp = m_entry.compareTo(entry);
-        if (cmp == 0 && m.accepted()) {
+        if (cmp == 0 && m.accepted() && p2aAccepted.get(slot) != null ) {
             // accepted
+            //System.out.println("Slot " + slot + ":::::" + p2aAccepted);
             p2aAccepted.get(slot).add(sender);
 
             if (isMajority(p2aAccepted.get(slot))) {
@@ -432,23 +437,6 @@ public class PaxosServer extends Node {
                 // execute chosen slots sequentially
                 sequentialExecute();
             }
-
-            // MICK: comment this for now (need to discuss what is it doing)
-//            // remove m from waiting
-//            if (this.accpetors.size() > ...){
-//                // Decision message
-//                for (r : replicas) {
-//                    send(new DecisionMessage(), r);
-//                }
-//            }
-//        } else {
-//            // Preempted message
-//            this.ballot_num++;
-//            for (Address sv : servers) {
-//                if (!Objects.equals(address, sv)) {
-//                    send(new P1aMessage(this.ballot_num), sv);
-//                }
-//            }
         } else if (cmp > 0 && status(slot) == ACCEPTED) {
             // preempted -> broadcast with higher ballot
             BallotNum m_ballot_num = m_entry.ballot_num();
@@ -563,7 +551,7 @@ public class PaxosServer extends Node {
 
     private void onP2aTimer(P2aTimer t) {
         int slot = t.p2a().slot();
-        if (paxos_log.get(slot).ballot_num().compareTo(t.p2a().ballot_num()) != 0) {
+        if (slot < slot_in || paxos_log.get(slot).ballot_num().compareTo(t.p2a().ballot_num()) != 0) {
             // outdated timer
             return;
         }
@@ -585,27 +573,6 @@ public class PaxosServer extends Node {
         Utils
        -----------------------------------------------------------------------*/
     // Your code here...
-    // Replica
-    //    private void propose() {
-    //        while (!this.requests.isEmpty()) {
-    //            if (!this.decisions.contains(this.slot_in)) {
-    //                AMOCommand cmd = this.requests.remove(0);
-    //                this.replica_proposals.put(this.slot_in, cmd);
-    //                send(new ProposeMessage(), leader);
-    //            }
-    //            this.slot_in++;
-    //        }
-    //    }
-    //
-    //    private void perform(AMOCommand cmd) {
-    //        for (int s = 1; s < this.slot_out; s++) {
-    //            if (Objects.equals(this.decisions.get(s), cmd)) {
-    //                AMOResult ret = runAMOCommand(cmd);
-    //                send(ret, client);
-    //            }
-    //        }
-    //        this.slot_out++;
-    //    }
 
     private AMOResult runAMOCommand(AMOCommand amoCommand) {
         return amoApplication.execute(amoCommand);
@@ -639,6 +606,7 @@ public class PaxosServer extends Node {
             }
             PaxosLogEntry entry = log.get(slot);
             if (slot + 1 > slot_out) {
+                System.out.println("Update log: " + slot_out);
                 slot_out = slot + 1;
                 paxos_log.put(slot, entry);
             } else if (entry.status() == ACCEPTED) {

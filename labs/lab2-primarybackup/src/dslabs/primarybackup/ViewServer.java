@@ -43,7 +43,7 @@ class ViewServer extends Node {
     private void handlePing(Ping m, Address sender) {
         // Your code here...
         aliveServers.add(sender);
-
+        //System.out.println("Ping: " + sender);
         if (Objects.equals(sender, currentView.primary()) &&
                 m.viewNum() == currentView.viewNum()) {
             ack = true;
@@ -89,6 +89,7 @@ class ViewServer extends Node {
             }
         }
         aliveServers.clear();
+        //System.out.println("View: " + currentView);
         set(t, PING_CHECK_MILLIS);
     }
 
