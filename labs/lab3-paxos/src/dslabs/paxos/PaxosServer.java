@@ -464,7 +464,7 @@ public class PaxosServer extends Node {
     //    }
 
     private void handleHeartbeatResponse(HeartbeatResponse m, Address sender) {
-        if (isLeader() && m.to_exec() >= slot_in - 1) {
+        if (isLeader() && m.to_exec() >= slot_in) {
             // only leader receives heartbeat responses
             // and ignore outdated response
             min_slot_to_exec = Math.min(min_slot_to_exec, m.to_exec());
@@ -478,7 +478,7 @@ public class PaxosServer extends Node {
             // heartbeat from old leader
             return;
         }
-        if (m.min_executed() < slot_in - 1) {
+        if (m.system_slot_in() < slot_in) {
             // outdated heartbeat
             // TODO: if checking for outdated heartbeat, what else needs to be checked?
             return;
@@ -490,7 +490,7 @@ public class PaxosServer extends Node {
         is_scouting = false;
         updateLog(m.log());
         sequentialExecute();
-        collectGarbage(m.min_executed());
+        collectGarbage(m.system_slot_in() - 1);
         send(new HeartbeatResponse(slot_to_exec), leader);
     }
 
@@ -506,7 +506,7 @@ public class PaxosServer extends Node {
 
         if (heartbeat_responded.size() == servers.length - 1) {
             // heard back from all other servers
-            collectGarbage(min_slot_to_exec);
+            collectGarbage(min_slot_to_exec - 1);
             heartbeat_responded.clear();
             min_slot_to_exec = slot_to_exec;
         }
@@ -514,7 +514,7 @@ public class PaxosServer extends Node {
         // broadcasts heartbeats
         for (Address sv : servers) {
             if (!Objects.equals(address, sv)) {
-                send(new Heartbeat(this.leader_id, paxos_log, slot_in - 1), sv);
+                send(new Heartbeat(this.leader_id, paxos_log, slot_in), sv);
             }
         }
         set(t, HB_TIMER);

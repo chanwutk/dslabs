@@ -55,7 +55,7 @@ class P2bMessage implements Message {
 class Heartbeat implements Message {
     @NonNull private final BallotNum ballot_num;
     @NonNull private final Map<Integer, PaxosLogEntry> log;
-    private final int min_executed;
+    private final int system_slot_in;
 }
 
 @Data
