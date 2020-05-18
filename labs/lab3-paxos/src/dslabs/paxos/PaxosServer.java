@@ -55,8 +55,6 @@ public class PaxosServer extends Node {
     private boolean is_leader_alive;
     // previously received valid heartbeat
     private Heartbeat prev_heartbeat;
-    // registered command in log but have not been executed
-    private Set<AMOCommand> on_going_commands;
     // highest ballot number heard
     private BallotNum global_ballot;
 
@@ -115,7 +113,6 @@ public class PaxosServer extends Node {
         this.is_scouting = false;
         this.p1aAccepted = new HashSet<>();
         this.ballot_num = this.global_ballot = new BallotNum(0, address);
-        this.on_going_commands = new HashSet<>();
 
         // Replica
         this.requests = new ArrayList<>();
@@ -232,7 +229,7 @@ public class PaxosServer extends Node {
             return;
         }
 
-        if (on_going_commands.contains(amoCommand)) {
+        if (onGoingCommand(amoCommand)) {
             // still working on this command
             return;
         }
@@ -242,7 +239,6 @@ public class PaxosServer extends Node {
         PaxosLogEntry entry = new PaxosLogEntry(amoCommand, ACCEPTED, ballot_num);
         paxos_log.put(slot_out, entry);
         p2aAccepted.put(slot_out, new HashSet<>());
-        on_going_commands.add(amoCommand);
         slot_out++;
         //System.out.println("Add slot: " + slot_out + " " + amoCommand);
         onP2aTimer(
@@ -583,10 +579,7 @@ public class PaxosServer extends Node {
         assert (upto < slot_to_exec);
         assert (slot_in - 1 <= upto);  // allow not garbage collecting
         for (; slot_in <= upto; slot_in++) {
-            if (paxos_log.containsKey(slot_in)) {
-                on_going_commands.remove(paxos_log.get(slot_in).amoCommand());
-                paxos_log.remove(slot_in);
-            }
+            paxos_log.remove(slot_in);
         }
     }
 
@@ -670,5 +663,15 @@ public class PaxosServer extends Node {
                 onP2aTimer(new P2aTimer(p2a));
             }
         }
+    }
+
+    private boolean onGoingCommand(AMOCommand amoCommand) {
+        for (int slot : paxos_log.keySet()) {
+            if (slot_to_exec <= slot && Objects.equals(amoCommand,
+                    paxos_log.get(slot).amoCommand())) {
+                return true;
+            }
+        }
+        return false;
     }
 }
