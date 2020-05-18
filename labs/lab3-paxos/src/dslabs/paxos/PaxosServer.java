@@ -68,8 +68,6 @@ public class PaxosServer extends Node {
 
     // Replica
     private List<AMOCommand> requests;
-    //    private Set<> replica_proposals;
-    //    private Set<> decisions;
 
     // Acceptor
     private BallotNum ballot_num;
@@ -240,7 +238,9 @@ public class PaxosServer extends Node {
         PaxosLogEntry entry = new PaxosLogEntry(amoCommand, ACCEPTED, ballot_num);
         paxos_log.put(slot_out, entry);
         p2aAccepted.put(slot_out, new HashSet<>());
+        on_going_commands.add(amoCommand);
         slot_out++;
+        //System.out.println("Add slot: " + slot_out + " " + amoCommand);
         onP2aTimer(
                 new P2aTimer(new P2aMessage(ballot_num, amoCommand, slot_out - 1)));
     }
@@ -256,9 +256,10 @@ public class PaxosServer extends Node {
         int slot = m.slot();
         if (status(slot) == CLEARED) {
             // outdated decision
+            //System.out.println("Cleared: " + slot);
             return;
         }
-
+        //System.out.println("Decision: " + slot);
         if (status(slot) != CHOSEN) {
             paxos_log.put(slot, m.entry());
         } else {
@@ -415,6 +416,7 @@ public class PaxosServer extends Node {
             if (isMajority(p2aAccepted.get(slot))) {
                 // majority accepted -> choose the entry
                 // clean up
+                //System.out.println("Majority: " + slot);
                 is_voting = false;
                 p2aAccepted.remove(slot);
 
