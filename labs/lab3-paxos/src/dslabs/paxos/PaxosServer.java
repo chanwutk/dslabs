@@ -416,7 +416,7 @@ public class PaxosServer extends Node {
                 // majority accepted -> choose the entry
                 // clean up
                 is_voting = false;
-                p2aAccepted.clear();
+                p2aAccepted.remove(slot);
 
                 // choose the entry
                 PaxosLogEntry chosenEntry = entry.choose();
