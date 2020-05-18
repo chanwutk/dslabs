@@ -177,6 +177,10 @@ public class PaxosServer extends Node {
             case EMPTY:
                 return null;
             default:
+                if (paxos_log.get(logSlotNum).amoCommand() == null) {
+                    // no-op
+                    return null;
+                }
                 return paxos_log.get(logSlotNum).amoCommand().command();
         }
     }
