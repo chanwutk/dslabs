@@ -28,7 +28,7 @@ final class HeartbeatTimer implements Timer {
 
 @Data
 final class P2aTimer implements Timer {
-    static final int P2A_TIMER = 50;
+    static final int P2A_TIMER = 25;
 
     @NonNull private final P2aMessage p2a;
 }

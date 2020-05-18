@@ -101,7 +101,7 @@ public class PaxosServer extends Node {
         // Your code here...
         this.amoApplication = new AMOApplication<>(app);
         this.address = address;
-        majority = (servers.length / 2) + 1;
+        majority = (servers.length / 2) - 1;
     }
 
 
@@ -152,12 +152,8 @@ public class PaxosServer extends Node {
         // Your code here...
         if (logSlotNum < slot_in) {
             return CLEARED;
-        } else if (logSlotNum >= slot_out) {
+        } else if (!paxos_log.containsKey(logSlotNum)) {// else if (logSlotNum >= slot_out) {
             return EMPTY;
-        }
-        if (paxos_log == null || paxos_log.get(logSlotNum) == null) {
-            System.out.println("-------" + slot_in + " " + slot_out + " " + logSlotNum + "-------");
-            System.out.println(paxos_log.keySet());
         }
         return paxos_log.get(logSlotNum).status();
     }
@@ -414,7 +410,6 @@ public class PaxosServer extends Node {
         int cmp = m_entry.compareTo(entry);
         if (cmp == 0 && m.accepted() && p2aAccepted.get(slot) != null ) {
             // accepted
-            //System.out.println("Slot " + slot + ":::::" + p2aAccepted);
             p2aAccepted.get(slot).add(sender);
 
             if (isMajority(p2aAccepted.get(slot))) {
@@ -582,8 +577,10 @@ public class PaxosServer extends Node {
         assert (upto < slot_to_exec);
         assert (slot_in - 1 <= upto);  // allow not garbage collecting
         for (; slot_in <= upto; slot_in++) {
-            on_going_commands.remove(paxos_log.get(slot_in).amoCommand());
-            paxos_log.remove(slot_in);
+            if (paxos_log.containsKey(slot_in)) {
+                on_going_commands.remove(paxos_log.get(slot_in).amoCommand());
+                paxos_log.remove(slot_in);
+            }
         }
     }
 
@@ -606,7 +603,8 @@ public class PaxosServer extends Node {
             }
             PaxosLogEntry entry = log.get(slot);
             if (slot + 1 > slot_out) {
-                System.out.println("Update log: " + slot_out);
+                //System.out.println("Update slot out: " + slot_out);
+                //System.out.println(paxos_log.keySet());
                 slot_out = slot + 1;
                 paxos_log.put(slot, entry);
             } else if (entry.status() == ACCEPTED) {
@@ -638,7 +636,7 @@ public class PaxosServer extends Node {
                 // no-op
                 continue;
             }
-
+            //System.out.println("Execute: " + slot_to_exec);
             AMOResult result =
                     runAMOCommand(paxos_log.get(slot_to_exec).amoCommand());
             send(new PaxosReply(result), amoCommand.sender());

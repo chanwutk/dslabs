@@ -82,6 +82,9 @@ class PaxosLogEntry implements Comparable<PaxosLogEntry> {
 
     @Override
     public int compareTo(PaxosLogEntry o) {
+        if (o == null) {
+            return -1;
+        }
         return ballot_num.compareTo(o.ballot_num);
     }
 
