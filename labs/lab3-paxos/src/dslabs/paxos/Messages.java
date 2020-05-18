@@ -3,6 +3,7 @@ package dslabs.paxos;
 import dslabs.atmostonce.AMOCommand;
 import dslabs.framework.Address;
 import dslabs.framework.Message;
+import java.io.Serializable;
 import java.util.Map;
 import lombok.Data;
 import lombok.NonNull;
@@ -63,7 +64,7 @@ class HeartbeatResponse implements Message {
 }
 
 @Data
-class BallotNum implements Comparable<BallotNum> {
+class BallotNum implements Comparable<BallotNum>, Serializable {
     private final int number;
     @NonNull private final Address address;
 
@@ -75,7 +76,7 @@ class BallotNum implements Comparable<BallotNum> {
 }
 
 @Data
-class PaxosLogEntry implements Comparable<PaxosLogEntry> {
+class PaxosLogEntry implements Comparable<PaxosLogEntry>, Serializable {
     @NonNull private final AMOCommand amoCommand;
     @NonNull private final PaxosLogSlotStatus status;
     @NonNull private final BallotNum ballot_num;

@@ -101,7 +101,7 @@ public class PaxosServer extends Node {
         // Your code here...
         this.amoApplication = new AMOApplication<>(app);
         this.address = address;
-        majority = (servers.length / 2) - 1;
+        majority = (servers.length / 2) + 1;
     }
 
 
