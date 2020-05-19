@@ -32,3 +32,10 @@ final class P2aTimer implements Timer {
 
     @NonNull private final P2aMessage p2a;
 }
+
+@Data
+final class P1aTimer implements Timer {
+    static final int P1A_TIMER = 25;
+
+    @NonNull private final P1aMessage p1a;
+}
