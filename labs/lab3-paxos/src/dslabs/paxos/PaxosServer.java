@@ -61,7 +61,8 @@ public class PaxosServer extends Node {
     // ballot number when sending p1a; null when not scouting
     private BallotNum p1a_ballot;
     // ballot number for p1a timer; null when new leader is elected
-    private BallotNum p1a_timer_ballot;
+//    private BallotNum p1a_timer_ballot;
+    private boolean system_scouting;
 
     // Scouting Info
     // set of servers that accept this server's p1a
@@ -114,7 +115,7 @@ public class PaxosServer extends Node {
         this.p1aAccepted = new HashSet<>();
         this.ballot_num = new BallotNum(0, address);
         this.p1a_ballot = null;
-        this.p1a_timer_ballot = null;
+        this.system_scouting = false;
 
         // Replica
         this.requests = new ArrayList<>();
@@ -373,13 +374,13 @@ public class PaxosServer extends Node {
                 // leader init
                 leader_id = p1a_ballot;
                 is_leader_alive = true;
-                p1a_timer_ballot = null;
                 prev_heartbeat = new Heartbeat(leader_id, paxos_log, slot_in - 1);
                 heartbeat_responded.clear();
                 p2aAccepted.clear();
 
                 // clean up
                 p1a_ballot = null;
+                system_scouting = false;
                 p1aAccepted.clear();
                 leader = address;
 
@@ -489,7 +490,7 @@ public class PaxosServer extends Node {
         leader = sender;
         is_leader_alive = true;
         p1a_ballot = null;
-        p1a_timer_ballot = null;
+        system_scouting = false;
         updateLog(m.log());
         sequentialExecute();
         collectGarbage(m.system_slot_in() - 1);
@@ -535,7 +536,7 @@ public class PaxosServer extends Node {
     private void onHeartbeatCheckTimer(HeartbeatCheckTimer t) {
         assert (!isLeader() || is_leader_alive);
 
-        if (p1a_timer_ballot != null) {
+        if (system_scouting) {
             // p1a is still not finished
             set(t, HB_CHECK_TIMER);
             return;
@@ -552,12 +553,12 @@ public class PaxosServer extends Node {
 
             // setup scouting
             p1aAccepted.clear();
-            p1a_timer_ballot = ballot_num;
             p1a_ballot = ballot_num;
+            system_scouting = true;
 //            leader = null;
 
             // start scouting
-            P1aMessage p1a = new P1aMessage(p1a_timer_ballot);
+            P1aMessage p1a = new P1aMessage(p1a_ballot);
             onP1aTimer(new P1aTimer(p1a));
         } else if (!isLeader()) {
             // for follower with active leader
@@ -587,7 +588,7 @@ public class PaxosServer extends Node {
     }
 
     private void onP1aTimer(P1aTimer t) {
-        if (p1a_timer_ballot == null || p1a_timer_ballot.compareTo(t.p1a().ballot_num()) != 0) {
+        if (p1a_ballot == null || p1a_ballot.compareTo(t.p1a().ballot_num()) != 0) {
             // p1a is done or outdated timer
             return;
         }
