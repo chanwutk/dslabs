@@ -19,7 +19,7 @@ class ProposeMessage implements Message {
 
 @Data
 class DecisionMessage implements Message {
-    @NonNull private final PaxosLogEntry entry;
+    @NonNull private final LogEntry entry;
     @NonNull private final int slot;
 }
 
@@ -32,7 +32,7 @@ class P1aMessage implements Message {
 class P1bMessage implements Message {
     @NonNull private final BallotNum ballot_num;
     @NonNull private final BallotNum p1a_ballot;
-    @NonNull private final Map<Integer, PaxosLogEntry> log;
+    @NonNull private final Map<Integer, LogEntry> log;
     private final boolean accepted;
 }
 
@@ -47,7 +47,7 @@ class P2aMessage implements Message {
 
 @Data
 class P2bMessage implements Message {
-    @NonNull private final PaxosLogEntry entry;
+    @NonNull private final LogEntry entry;
     private final int slot;
     private final boolean accepted;
 }
@@ -55,7 +55,7 @@ class P2bMessage implements Message {
 @Data
 class Heartbeat implements Message {
     @NonNull private final BallotNum ballot_num;
-    @NonNull private final Map<Integer, PaxosLogEntry> log;
+    @NonNull private final Map<Integer, LogEntry> log;
     private final int system_slot_in;
 }
 
@@ -77,24 +77,24 @@ class BallotNum implements Comparable<BallotNum>, Serializable {
 }
 
 @Data
-class PaxosLogEntry implements Comparable<PaxosLogEntry>, Serializable {
+class LogEntry implements Comparable<LogEntry>, Serializable {
     @NonNull private final AMOCommand amoCommand;
     @NonNull private final PaxosLogSlotStatus status;
     @NonNull private final BallotNum ballot_num;
 
     @Override
-    public int compareTo(PaxosLogEntry o) {
+    public int compareTo(LogEntry o) {
         if (o == null) {
             return -1;
         }
         return ballot_num.compareTo(o.ballot_num);
     }
 
-    public PaxosLogEntry choose() {
-        return new PaxosLogEntry(amoCommand, CHOSEN, ballot_num);
+    public LogEntry choose() {
+        return new LogEntry(amoCommand, CHOSEN, ballot_num);
     }
 
-    public PaxosLogEntry increment(BallotNum ballot_num_) {
-        return new PaxosLogEntry(amoCommand, status, ballot_num_);
+    public LogEntry increment(BallotNum ballot_num_) {
+        return new LogEntry(amoCommand, status, ballot_num_);
     }
 }

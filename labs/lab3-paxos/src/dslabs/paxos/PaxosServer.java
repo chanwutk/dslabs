@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
@@ -43,7 +44,7 @@ public class PaxosServer extends Node {
     // prevent calling address() over and over
     private final Address address;
     // log for proposal
-    private Map<Integer, PaxosLogEntry> paxos_log;
+    private Map<Integer, LogEntry> paxos_log;
     // number of servers to reach majority
     private final int majority;
     // index of first non-cleared slot
@@ -60,8 +61,7 @@ public class PaxosServer extends Node {
     private Heartbeat prev_heartbeat;
     // ballot number when sending p1a; null when not scouting
     private BallotNum p1a_ballot;
-    // ballot number for p1a timer; null when new leader is elected
-//    private BallotNum p1a_timer_ballot;
+    // if the system is in the scouting phase
     private boolean system_scouting;
 
     // Scouting Info
@@ -100,7 +100,7 @@ public class PaxosServer extends Node {
         this.amoApplication = new AMOApplication<>(app);
         this.address = address;
         majority = (servers.length / 2) + 1;
-        // LOGGER.setLevel(Level.OFF);
+//         LOGGER.setLevel(Level.OFF);
     }
 
 
@@ -241,7 +241,7 @@ public class PaxosServer extends Node {
         if (!Objects.equals(ballot_num.address(), address)) {
             ballot_num = incrementBallot(ballot_num);
         }
-        PaxosLogEntry entry = new PaxosLogEntry(amoCommand, ACCEPTED, ballot_num);
+        LogEntry entry = new LogEntry(amoCommand, ACCEPTED, ballot_num);
         paxos_log.put(slot_out, entry);
         p2aAccepted.put(slot_out, new HashSet<>());
         slot_out++;
@@ -268,7 +268,7 @@ public class PaxosServer extends Node {
         if (status(slot) != CHOSEN) {
             putLog(slot, m.entry());
         } else {
-            PaxosLogEntry entry = paxos_log.get(slot);
+            LogEntry entry = paxos_log.get(slot);
             assert (Objects.equals(m.entry().amoCommand(), command(slot))) :
                     "conflicting chosen decisions (command)";
             assert (Objects
@@ -286,7 +286,7 @@ public class PaxosServer extends Node {
             // still have leader
             return;
         }
-        LOGGER.info("p1a: " + address);
+//        LOGGER.info("p1a: " + address);
 
         boolean accepted = false;
         BallotNum m_ballot = m.ballot_num();
@@ -320,7 +320,7 @@ public class PaxosServer extends Node {
 
         int slot = m.slot();
         boolean accepted = false;
-        PaxosLogEntry entry = new PaxosLogEntry(m.amoCommand(), ACCEPTED, m_ballot);
+        LogEntry entry = new LogEntry(m.amoCommand(), ACCEPTED, m_ballot);
         switch (status(slot)) {
             case CHOSEN:
                 // reject
@@ -369,7 +369,10 @@ public class PaxosServer extends Node {
             // accepted
             p1aAccepted.add(sender);
             if (isMajority(p1aAccepted)) {
-                LOGGER.info(address + " is leader");
+//                LOGGER.info(address + " is leader");
+//                LOGGER.info("end  : " + slot_out);
+//                LOGGER.info("slots: " + (slot_out - slot_to_exec));
+//                LOGGER.info("first: " + paxos_log.get(slot_to_exec));
                 // majority accepted -> becomes leader
                 // leader init
                 leader_id = p1a_ballot;
@@ -386,6 +389,8 @@ public class PaxosServer extends Node {
 
                 // update ballot
                 // TODO: should we update ballot??
+
+                sequentialExecute();
 
 //                LOGGER.info("become leader: " + address);
 //                LOGGER.info("  leader id: " + leader_id);
@@ -417,8 +422,12 @@ public class PaxosServer extends Node {
         }
 
         int slot = m.slot();
-        PaxosLogEntry m_entry = m.entry();
-        PaxosLogEntry entry = paxos_log.get(slot);
+//        if (stuck_slot == slot) {
+//            LOGGER.info("p2b stuck: " + m);
+//            LOGGER.info("   from: " + sender);
+//        }
+        LogEntry m_entry = m.entry();
+        LogEntry entry = paxos_log.get(slot);
         int cmp = m_entry.compareTo(entry);
         if (cmp == 0 && m.accepted() && p2aAccepted.get(slot) != null) {
             // accepted
@@ -431,7 +440,7 @@ public class PaxosServer extends Node {
                 p2aAccepted.remove(slot);
 
                 // choose the entry
-                PaxosLogEntry chosenEntry = entry.choose();
+                LogEntry chosenEntry = entry.choose();
                 putLog(slot, chosenEntry);
 
                 // broadcast decision
@@ -453,7 +462,7 @@ public class PaxosServer extends Node {
             if (!Objects.equals(ballot_num.address(), address)) {
                 ballot_num = incrementBallot(ballot_num);
             }
-            PaxosLogEntry newEntry = entry.increment(ballot_num);
+            LogEntry newEntry = entry.increment(ballot_num);
             putLog(slot, newEntry);
             p2aAccepted.get(slot).clear();
 
@@ -476,15 +485,17 @@ public class PaxosServer extends Node {
     private void handleHeartbeat(Heartbeat m, Address sender) {
 //        LOGGER.info("heartbeat:" + prev_heartbeat.ballot_num().toString());
 //        LOGGER.info("  m: " + m.ballot_num());
+//        if (sender.toString().equals("server3") && address.toString().equals("server5")) {
+//            LOGGER.info("heartbeat: " + m.ballot_num() + " " + m.system_slot_in());
+//            LOGGER.info("  prev   : " + prev_heartbeat.ballot_num() + " " + slot_in);
+//        }
         if (m.ballot_num().compareTo(prev_heartbeat.ballot_num()) < 0) {
             // heartbeat from old leader
             return;
         }
-        if (m.system_slot_in() < slot_in) {
-            // outdated heartbeat
-            // TODO: if checking for outdated heartbeat, what else needs to be checked?
-            return;
-        }
+
+        // TODO: if this server was leader, also clean up everything
+        p2aAccepted.clear();
 
         prev_heartbeat = m;
         leader = sender;
@@ -500,8 +511,9 @@ public class PaxosServer extends Node {
     /* -------------------------------------------------------------------------
         Timer Handlers
        -----------------------------------------------------------------------*/
-    private int slot_out_prev = -1;
-    private int slot_out_prev2 = -1;
+//    private int slot_out_prev = -1;
+//    private int slot_out_prev2 = -1;
+//    private int stuck_slot = 0;
     // Your code here...
     private void onHeartbeatTimer(HeartbeatTimer t) {
         if (!isLeader() || !Objects.equals(t.leader_ballot(), leader_id)) {
@@ -509,13 +521,17 @@ public class PaxosServer extends Node {
             return;
         }
 
-        if (slot_out == slot_out_prev && slot_out == slot_out_prev2) {
-            LOGGER.info("end  : " + slot_out);
-            LOGGER.info("slots: " + (slot_out - slot_to_exec));
-            LOGGER.info("first: " + paxos_log.get(slot_to_exec));
-        }
-        slot_out_prev2 = slot_out_prev;
-        slot_out_prev = slot_out;
+//        if (slot_out == slot_out_prev && slot_out == slot_out_prev2 && address.toString().equals("server3")) {
+//            LOGGER.info("server: " + address);
+//            LOGGER.info("end  : " + slot_out);
+//            LOGGER.info("slots: " + (slot_out - slot_to_exec));
+//            LOGGER.info("first: " + paxos_log.get(slot_to_exec));
+//            stuck_slot = slot_to_exec;
+//        } else {
+//            stuck_slot = 0;
+//        }
+//        slot_out_prev2 = slot_out_prev;
+//        slot_out_prev = slot_out;
 
         if (heartbeat_responded.size() == servers.length - 1) {
             // heard back from all other servers
@@ -544,8 +560,8 @@ public class PaxosServer extends Node {
 
         if (!is_leader_alive) {
             // try to be leader
-            LOGGER.info("dead: " + address);
-            LOGGER.info("  ballot: " + ballot_num);
+//            LOGGER.info("dead: " + address);
+//            LOGGER.info("  ballot: " + ballot_num);
             // generate new ballot
             if (!Objects.equals(ballot_num.address(), address)) {
                 ballot_num = incrementBallot(ballot_num);
@@ -555,7 +571,7 @@ public class PaxosServer extends Node {
             p1aAccepted.clear();
             p1a_ballot = ballot_num;
             system_scouting = true;
-//            leader = null;
+            leader = null;
 
             // start scouting
             P1aMessage p1a = new P1aMessage(p1a_ballot);
@@ -574,6 +590,9 @@ public class PaxosServer extends Node {
             // outdated timer
             return;
         }
+//        if (address.toString().equals("server3")) {
+//            LOGGER.info("p2a timer: " + t);
+//        }
 
         P2aMessage message = t.p2a();
         for (Address server : servers) {
@@ -635,12 +654,12 @@ public class PaxosServer extends Node {
         return c.size() >= majority;
     }
 
-    private void updateLog(Map<Integer, PaxosLogEntry> log) {
+    private void updateLog(Map<Integer, LogEntry> log) {
         for (int slot : log.keySet()) {
             if (slot < slot_in) {
                 continue;
             }
-            PaxosLogEntry entry = log.get(slot);
+            LogEntry entry = log.get(slot);
             if (slot + 1 > slot_out) {
                 //System.out.println("Update slot out: " + slot_out);
                 //System.out.println(paxos_log.keySet());
@@ -690,11 +709,12 @@ public class PaxosServer extends Node {
                 case CLEARED:
                     assert (false) : "slot > slot_in should not be cleared";
                 case ACCEPTED:
-                    AMOCommand c = paxos_log.get(slot).amoCommand();
-                    p2a = new P2aMessage(ballot_num, c, slot);
+                    LogEntry e = paxos_log.get(slot);
+                    p2a = new P2aMessage(e.ballot_num(), e.amoCommand(), slot);
                     break;
                 case EMPTY:
                     // no-op
+                    paxos_log.put(slot, new LogEntry(null, ACCEPTED, ballot_num));
                     p2a = new P2aMessage(ballot_num, null, slot);
                     break;
             }
@@ -715,7 +735,7 @@ public class PaxosServer extends Node {
         return false;
     }
 
-    private void putLog(int slot, PaxosLogEntry entry) {
+    private void putLog(int slot, LogEntry entry) {
         if (slot + 1 > slot_out) {
             slot_out = slot + 1;
         }
