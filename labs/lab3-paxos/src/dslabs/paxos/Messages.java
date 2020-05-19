@@ -31,6 +31,7 @@ class P1aMessage implements Message {
 @Data
 class P1bMessage implements Message {
     @NonNull private final BallotNum ballot_num;
+    @NonNull private final BallotNum p1a_ballot;
     @NonNull private final Map<Integer, PaxosLogEntry> log;
     private final boolean accepted;
 }
