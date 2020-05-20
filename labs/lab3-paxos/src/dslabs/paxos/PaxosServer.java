@@ -63,6 +63,8 @@ public class PaxosServer extends Node {
     private BallotNum p1a_ballot;
     // if the system is in the scouting phase
     private boolean system_scouting;
+    // accepted p1a ballot
+    private BallotNum accepted_p1a;
 
     // Scouting Info
     // set of servers that accept this server's p1a
@@ -114,6 +116,7 @@ public class PaxosServer extends Node {
         this.prev_heartbeat = new Heartbeat(new BallotNum(-1, address), paxos_log, 0);
         this.p1aAccepted = new HashSet<>();
         this.ballot_num = new BallotNum(0, address);
+        this.accepted_p1a = new BallotNum(-1, address);
         this.p1a_ballot = null;
         this.system_scouting = false;
 
@@ -287,22 +290,28 @@ public class PaxosServer extends Node {
             return;
         }
 //        LOGGER.info("p1a: " + address);
-
-        boolean accepted = false;
         BallotNum m_ballot = m.ballot_num();
         if (m_ballot.compareTo(ballot_num) >= 0) {
-            // received higher ballot
+            // update ballot
             ballot_num = m_ballot;
+        }
+
+        boolean accepted = false;
+        if (m_ballot.compareTo(accepted_p1a) >= 0) {
+            // received higher ballot
+            accepted_p1a = m_ballot;
             accepted = true;
         }
 
         P1bMessage p1b = new P1bMessage(ballot_num, m_ballot, paxos_log, accepted);
-        if (Objects.equals(sender, address)) {
-            // response to self, bypassing network
-            handleP1bMessage(p1b, sender);
-        } else {
-            // response to other through network
-            send(p1b, sender);
+        for (Address server : servers) {
+            if (Objects.equals(server, address)) {
+                // response to self, bypassing network
+                handleP1bMessage(p1b, server);
+            } else {
+                // response to other through network
+                send(p1b, server);
+            }
         }
     }
 
@@ -369,13 +378,14 @@ public class PaxosServer extends Node {
             // accepted
             p1aAccepted.add(sender);
             if (isMajority(p1aAccepted)) {
-//                LOGGER.info(address + " is leader");
+                LOGGER.info(address + " is leader: (" + p1aAccepted.toString() + ")");
 //                LOGGER.info("end  : " + slot_out);
 //                LOGGER.info("slots: " + (slot_out - slot_to_exec));
 //                LOGGER.info("first: " + paxos_log.get(slot_to_exec));
                 // majority accepted -> becomes leader
                 // leader init
                 leader_id = p1a_ballot;
+                accepted_p1a = p1a_ballot;
                 is_leader_alive = true;
                 prev_heartbeat = new Heartbeat(leader_id, paxos_log, slot_in - 1);
                 heartbeat_responded.clear();
@@ -494,9 +504,19 @@ public class PaxosServer extends Node {
             return;
         }
 
+        if (m.ballot_num().compareTo(accepted_p1a) < 0) {
+            // old leader
+            LOGGER.info("drop heartbeat: " + sender + "->" + address);
+            LOGGER.info("  accepted ballot: " + accepted_p1a);
+            LOGGER.info("         m ballot: " + m.ballot_num());
+            return;
+        }
+
         // TODO: if this server was leader, also clean up everything
         p2aAccepted.clear();
 
+        p1aAccepted.clear();
+        accepted_p1a = m.ballot_num();
         prev_heartbeat = m;
         leader = sender;
         is_leader_alive = true;
