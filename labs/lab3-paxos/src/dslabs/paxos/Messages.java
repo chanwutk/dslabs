@@ -54,7 +54,7 @@ class P2bMessage implements Message {
 
 @Data
 class Heartbeat implements Message {
-    @NonNull private final BallotNum ballot_num;
+    @NonNull private final BallotNum leader_id;
     @NonNull private final Map<Integer, LogEntry> log;
     private final int system_slot_in;
 }
@@ -78,7 +78,8 @@ class BallotNum implements Comparable<BallotNum>, Serializable {
 
 @Data
 class LogEntry implements Comparable<LogEntry>, Serializable {
-    @NonNull private final AMOCommand amoCommand;
+    // amoCommand can be null if no-op
+    private final AMOCommand amoCommand;
     @NonNull private final PaxosLogSlotStatus status;
     @NonNull private final BallotNum ballot_num;
 
@@ -97,4 +98,10 @@ class LogEntry implements Comparable<LogEntry>, Serializable {
     public LogEntry increment(BallotNum ballot_num_) {
         return new LogEntry(amoCommand, status, ballot_num_);
     }
+}
+
+@Data
+class NewLeader implements Message {
+    @NonNull private final Address leader;
+    @NonNull private final BallotNum leader_id;
 }

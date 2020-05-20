@@ -64,7 +64,7 @@ public class PaxosServer extends Node {
     // if the system is in the scouting phase
     private boolean system_scouting;
     // accepted p1a ballot
-    private BallotNum accepted_p1a;
+//    private BallotNum accepted_p1a;
 
     // Scouting Info
     // set of servers that accept this server's p1a
@@ -102,7 +102,7 @@ public class PaxosServer extends Node {
         this.amoApplication = new AMOApplication<>(app);
         this.address = address;
         majority = (servers.length / 2) + 1;
-//         LOGGER.setLevel(Level.OFF);
+         LOGGER.setLevel(Level.OFF);
     }
 
 
@@ -116,7 +116,7 @@ public class PaxosServer extends Node {
         this.prev_heartbeat = new Heartbeat(new BallotNum(-1, address), paxos_log, 0);
         this.p1aAccepted = new HashSet<>();
         this.ballot_num = new BallotNum(0, address);
-        this.accepted_p1a = new BallotNum(-1, address);
+        this.leader_id = new BallotNum(-1, address);
         this.p1a_ballot = null;
         this.system_scouting = false;
 
@@ -211,9 +211,6 @@ public class PaxosServer extends Node {
      */
     public int lastNonEmpty() {
         // Your code here...
-        if (paxos_log.isEmpty()) {
-            return 0;
-        }
         return slot_out - 1;
     }
 
@@ -297,21 +294,20 @@ public class PaxosServer extends Node {
         }
 
         boolean accepted = false;
-        if (m_ballot.compareTo(accepted_p1a) >= 0) {
+        if (m_ballot.compareTo(leader_id) >= 0) {
             // received higher ballot
-            accepted_p1a = m_ballot;
+            leader_id = m_ballot;
+            system_scouting = true;
             accepted = true;
         }
 
         P1bMessage p1b = new P1bMessage(ballot_num, m_ballot, paxos_log, accepted);
-        for (Address server : servers) {
-            if (Objects.equals(server, address)) {
-                // response to self, bypassing network
-                handleP1bMessage(p1b, server);
-            } else {
-                // response to other through network
-                send(p1b, server);
-            }
+        if (Objects.equals(sender, address)) {
+            // response to self, bypassing network
+            handleP1bMessage(p1b, address);
+        } else {
+            // response to other through network
+            send(p1b, sender);
         }
     }
 
@@ -324,6 +320,9 @@ public class PaxosServer extends Node {
 
         if (!Objects.equals(sender, leader)) {
             // only leader
+            if (leader != null) {
+                send(new NewLeader(leader, leader_id), sender);
+            }
             return;
         }
 
@@ -385,7 +384,7 @@ public class PaxosServer extends Node {
                 // majority accepted -> becomes leader
                 // leader init
                 leader_id = p1a_ballot;
-                accepted_p1a = p1a_ballot;
+//                accepted_p1a = p1a_ballot;
                 is_leader_alive = true;
                 prev_heartbeat = new Heartbeat(leader_id, paxos_log, slot_in - 1);
                 heartbeat_responded.clear();
@@ -499,16 +498,17 @@ public class PaxosServer extends Node {
 //            LOGGER.info("heartbeat: " + m.ballot_num() + " " + m.system_slot_in());
 //            LOGGER.info("  prev   : " + prev_heartbeat.ballot_num() + " " + slot_in);
 //        }
-        if (m.ballot_num().compareTo(prev_heartbeat.ballot_num()) < 0) {
+        if (m.leader_id().compareTo(prev_heartbeat.leader_id()) < 0) {
             // heartbeat from old leader
             return;
         }
 
-        if (m.ballot_num().compareTo(accepted_p1a) < 0) {
+        if (leader != null && m.leader_id().compareTo(leader_id) < 0) {
             // old leader
             LOGGER.info("drop heartbeat: " + sender + "->" + address);
-            LOGGER.info("  accepted ballot: " + accepted_p1a);
-            LOGGER.info("         m ballot: " + m.ballot_num());
+            LOGGER.info("  accepted ballot: " + leader_id);
+            LOGGER.info("         m ballot: " + m.leader_id());
+            send(new NewLeader(leader, leader_id), sender);
             return;
         }
 
@@ -516,7 +516,7 @@ public class PaxosServer extends Node {
         p2aAccepted.clear();
 
         p1aAccepted.clear();
-        accepted_p1a = m.ballot_num();
+        leader_id = m.leader_id();
         prev_heartbeat = m;
         leader = sender;
         is_leader_alive = true;
@@ -526,6 +526,13 @@ public class PaxosServer extends Node {
         sequentialExecute();
         collectGarbage(m.system_slot_in() - 1);
         send(new HeartbeatResponse(slot_to_exec), leader);
+    }
+
+    private void handleNewLeader(NewLeader m, Address sender) {
+        if (m.leader_id().compareTo(leader_id) > 0) {
+            leader = m.leader();
+            leader_id = m.leader_id();
+        }
     }
 
     /* -------------------------------------------------------------------------
@@ -655,6 +662,7 @@ public class PaxosServer extends Node {
     }
 
     private void collectGarbage(int upto) {
+        assert (upto < slot_out);
         assert (upto < slot_to_exec);
         assert (slot_in - 1 <= upto);  // allow not garbage collecting
         for (; slot_in <= upto; slot_in++) {
@@ -734,7 +742,8 @@ public class PaxosServer extends Node {
                     break;
                 case EMPTY:
                     // no-op
-                    paxos_log.put(slot, new LogEntry(null, ACCEPTED, ballot_num));
+                    LogEntry entry = new LogEntry(null, ACCEPTED, ballot_num);
+                    paxos_log.put(slot, entry);
                     p2a = new P2aMessage(ballot_num, null, slot);
                     break;
             }
