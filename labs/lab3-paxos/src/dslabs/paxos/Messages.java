@@ -102,6 +102,6 @@ class LogEntry implements Comparable<LogEntry>, Serializable {
 
 @Data
 class NewLeader implements Message {
-    @NonNull private final Address leader;
+    private final Address leader;
     @NonNull private final BallotNum leader_id;
 }

@@ -23,7 +23,7 @@ final class HeartbeatCheckTimer implements Timer {
 final class HeartbeatTimer implements Timer {
     static final int HB_TIMER = 25;
 
-    @NonNull private final BallotNum leader_ballot;
+    @NonNull private final BallotNum leader_id;
 }
 
 @Data
