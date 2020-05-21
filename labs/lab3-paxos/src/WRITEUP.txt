@@ -4,7 +4,25 @@ Partner 1 name and net ID: Chanwut Kittivorawong (chanwutk)
 Partner 2 name and net ID: Podshara Chanrungmaneekul (shon2)
 
 Brief description of design:
+- PaxosClient
+  - To run command, it broadcast the command to all of the servers in the list.
+- PaxosServer
+  - If leader is not active, on timer elect the new leader by broadcasting their
+      promised ballot number, when the majority of servers accept the leader with
+      the highest ballot number, it will continue to the next phrase.
+  - If active, periodically broadcast message to other servers for updating
+    paxos log, sequential executing, and garbage collecting. Then servers send
+    the latest execute slot number back to leader for update garbage collect target.
+    When leader ping other server, it will be considered as active, otherwise other
+    servers will think it is dead and begin to elect a new leader.
+  - When client send a new request, leader will keep track and put it on the paxos log.
+    Then broadcast a new message proposing the new operation to other servers. After
+    accepting the operation, each server will broadcast another message to other servers
+    and when majority of servers accept the operation it will send the decision back to the
+    leader and try to execute a chosen command in the log.
 
 
 Hours spent on the lab:
 
+
+70 Hours

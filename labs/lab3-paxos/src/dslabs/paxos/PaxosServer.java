@@ -69,18 +69,10 @@ public class PaxosServer extends Node {
     // set of servers that accept this server's p1a
     private Set<Address> p1aAccepted;
 
-    // Replica
-    private List<AMOCommand> requests;
-
     // Acceptor
     private BallotNum ballot_num;
-    //    private Set<> accpeted; /**/
 
     // Leader
-    //    private Set<> scout_accpetors;
-    //    private Set<> commander_accpetors;
-    //    private int slot_num;
-    //    private Map<> leader_proposals;
     // minimum index of the slot to be executed over the system
     private int min_slot_to_exec;
     // set of servers that have responded the heartbeat over the current period
@@ -118,12 +110,6 @@ public class PaxosServer extends Node {
         this.leader_id = new BallotNum(-1, address);
         this.p1a_ballot = null;
         this.system_scouting = false;
-
-        // Replica
-        this.requests = new ArrayList<>();
-        // Acceptor
-        //        this.accepted = new Set<>();
-        //        this.acceptors = new Set<>();
 
         // Leader
         this.heartbeat_responded = new HashSet<>();
