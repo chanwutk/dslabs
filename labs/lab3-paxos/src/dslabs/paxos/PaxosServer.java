@@ -82,6 +82,8 @@ public class PaxosServer extends Node {
     // set of servers that accept this leader's p2a
     private Map<Integer, Set<Address>> p2aAccepted;
 
+    private int p2a_seq;
+
     /* -------------------------------------------------------------------------
         Construction and Initialization
        -----------------------------------------------------------------------*/
@@ -115,6 +117,7 @@ public class PaxosServer extends Node {
         this.heartbeat_responded = new HashSet<>();
         this.p2aAccepted = new HashMap<>();
 
+        this.p2a_seq = 1;
         set(new HeartbeatCheckTimer(), HB_CHECK_TIMER);
     }
 
@@ -228,10 +231,10 @@ public class PaxosServer extends Node {
         }
         LogEntry entry = new LogEntry(amoCommand, ACCEPTED, ballot_num);
         paxos_log.put(slot_out, entry);
-        p2aAccepted.put(slot_out, new HashSet<>());
+        p2aAccepted.put(/*slot_out*/++p2a_seq, new HashSet<>());
         slot_out++;
         //System.out.println("Add slot: " + slot_out + " " + amoCommand);
-        P2aMessage p2a = new P2aMessage(ballot_num, amoCommand, slot_out - 1);
+        P2aMessage p2a = new P2aMessage(ballot_num, amoCommand, slot_out - 1, p2a_seq);
         onP2aTimer(new P2aTimer(p2a));
     }
 
@@ -311,6 +314,7 @@ public class PaxosServer extends Node {
             return;
         }
 
+        int seq = m.seq();
         int slot = m.slot();
         boolean accepted = false;
         LogEntry entry = new LogEntry(m.amoCommand(), ACCEPTED, m_ballot);
@@ -338,7 +342,7 @@ public class PaxosServer extends Node {
                 return;
         }
 
-        P2bMessage p2b = new P2bMessage(paxos_log.get(slot), slot, accepted);
+        P2bMessage p2b = new P2bMessage(paxos_log.get(slot), slot, accepted, seq);
         if (Objects.equals(sender, address)) {
             // response to self, bypassing network
             handleP2bMessage(p2b, sender);
@@ -416,6 +420,7 @@ public class PaxosServer extends Node {
         }
 
         int slot = m.slot();
+        int seq = m.seq();
 //        if (stuck_slot == slot) {
 //            LOGGER.info("p2b stuck: " + m);
 //            LOGGER.info("   from: " + sender);
@@ -423,15 +428,16 @@ public class PaxosServer extends Node {
         LogEntry m_entry = m.entry();
         LogEntry entry = paxos_log.get(slot);
         int cmp = m_entry.compareTo(entry);
-        if (cmp == 0 && m.accepted() && p2aAccepted.get(slot) != null) {
+        if (cmp == 0 && m.accepted() && p2aAccepted.get(/*slot*/seq) != null) {
             // accepted
-            p2aAccepted.get(slot).add(sender);
+            p2aAccepted.get(/*slot*/seq).add(sender);
+            //LOGGER.info("leader " + leader + " sender: " + sender + " -> " + address + " " + slot + " " + m_entry + " " + p2aAccepted);
 
-            if (isMajority(p2aAccepted.get(slot))) {
+            if (isMajority(p2aAccepted.get(/*slot*/seq))) {
                 // majority accepted -> choose the entry
                 // clean up
                 //System.out.println("Majority: " + slot);
-                p2aAccepted.remove(slot);
+                p2aAccepted.remove(/*slot*/seq);
 
                 // choose the entry
                 LogEntry chosenEntry = entry.choose();
@@ -458,10 +464,9 @@ public class PaxosServer extends Node {
             }
             LogEntry newEntry = entry.increment(ballot_num);
             putLog(slot, newEntry);
-            p2aAccepted.get(slot).clear();
-
+            p2aAccepted.get(/*slot*/seq).clear();
             P2aMessage p2a =
-                    new P2aMessage(ballot_num, newEntry.amoCommand(), slot);
+                    new P2aMessage(ballot_num, newEntry.amoCommand(), slot, ++p2a_seq);
             onP2aTimer(new P2aTimer(p2a));
         }
     }
@@ -724,17 +729,17 @@ public class PaxosServer extends Node {
                     assert (false) : "slot > slot_in should not be cleared";
                 case ACCEPTED:
                     LogEntry e = paxos_log.get(slot);
-                    p2a = new P2aMessage(e.ballot_num(), e.amoCommand(), slot);
+                    p2a = new P2aMessage(e.ballot_num(), e.amoCommand(), slot, ++p2a_seq);
                     break;
                 case EMPTY:
                     // no-op
                     LogEntry entry = new LogEntry(null, ACCEPTED, ballot_num);
                     paxos_log.put(slot, entry);
-                    p2a = new P2aMessage(ballot_num, null, slot);
+                    p2a = new P2aMessage(ballot_num, null, slot, ++p2a_seq);
                     break;
             }
             if (p2a != null) {
-                p2aAccepted.put(slot, new HashSet<>());
+                p2aAccepted.put(/*slot*/p2a_seq, new HashSet<>());
                 onP2aTimer(new P2aTimer(p2a));
             }
         }

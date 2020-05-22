@@ -43,6 +43,7 @@ class P2aMessage implements Message {
     // if null -> no-op
     private final AMOCommand amoCommand;
     private final int slot;
+    private final int seq;
 }
 
 @Data
@@ -50,6 +51,7 @@ class P2bMessage implements Message {
     @NonNull private final LogEntry entry;
     private final int slot;
     private final boolean accepted;
+    private final int seq;
 }
 
 @Data
