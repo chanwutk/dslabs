@@ -377,7 +377,7 @@ public class PaxosServer extends Node {
                 is_leader_alive = true;
                 prev_heartbeat = new Heartbeat(leader_id, paxos_log, slot_in - 1);
                 heartbeat_responded.clear();
-                p2aAccepted.clear();
+                //gp2aAccepted.clear();
 
                 // clean up
                 p1a_ballot = null;
@@ -464,7 +464,7 @@ public class PaxosServer extends Node {
             }
             LogEntry newEntry = entry.increment(ballot_num);
             putLog(slot, newEntry);
-            p2aAccepted.get(/*slot*/seq).clear();
+            //p2aAccepted.get(/*slot*/seq).clear();
             P2aMessage p2a =
                     new P2aMessage(ballot_num, newEntry.amoCommand(), slot, ++p2a_seq);
             onP2aTimer(new P2aTimer(p2a));
