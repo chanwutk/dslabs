@@ -4,11 +4,16 @@ import dslabs.framework.Address;
 import dslabs.framework.Application;
 import dslabs.framework.Command;
 import dslabs.framework.Result;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
+import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 
 @ToString
@@ -19,9 +24,11 @@ public final class ShardMaster implements Application {
     private final int numShards;
 
     // Your code here...
+    private List<ShardConfig> shardConfigList;
 
     public ShardMaster(int numShards) {
         this.numShards = numShards;
+        this.shardConfigList = new ArrayList<>();
     }
 
     public interface ShardMasterCommand extends Command {
@@ -81,6 +88,26 @@ public final class ShardMaster implements Application {
             Join join = (Join) command;
 
             // Your code here...
+            int groupId = join.groupId();
+            Set<Address> servers = join.servers();
+            int lastConfigNum = shardConfigList.size() - 1;
+            Map<Integer, Pair<Set<Address>, Set<Integer>>> newGroupInfo =
+                    new HashMap<>();
+            if (lastConfigNum < INITIAL_CONFIG_NUM) {
+                Set<Integer> shardIds = new HashSet<>();
+                for (int i = 0; i < numShards; i++) {shardIds.add(i);}
+                newGroupInfo.put(INITIAL_CONFIG_NUM,new ImmutablePair<>(servers, shardIds));
+                return new ShardConfig(INITIAL_CONFIG_NUM, newGroupInfo);
+            }
+            else {
+                Map<Integer, Pair<Set<Address>, Set<Integer>>> groupInfo =
+                        shardConfigList.get(lastConfigNum).groupInfo();
+                if (groupInfo.containsKey(groupId)) {
+                    return new Error();
+                }
+                // TODO: redistribute the shards
+                return new ShardConfig(lastConfigNum + 1, newGroupInfo);
+            }
         }
 
         if (command instanceof Leave) {
@@ -99,8 +126,20 @@ public final class ShardMaster implements Application {
             Query query = (Query) command;
 
             // Your code here...
+            int configNum = query.configNum();
+            int lastConfigNum = shardConfigList.size() - 1;
+            if (configNum >= 0 && configNum <= lastConfigNum) {
+                return (Result) new ShardConfig(configNum,
+                        shardConfigList.get(configNum).groupInfo());
+            } else if (configNum == -1 || configNum > lastConfigNum) {
+                return (Result) new ShardConfig(lastConfigNum,
+                        shardConfigList.get(lastConfigNum).groupInfo());
+            } else {
+                return new Error();
+            }
         }
-
         throw new IllegalArgumentException();
     }
+
+    //util
 }
