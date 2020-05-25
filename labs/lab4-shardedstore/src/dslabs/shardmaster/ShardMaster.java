@@ -296,18 +296,26 @@ public final class ShardMaster implements Application {
     }
 
     private Result executeQuery(Query query) {
-        int configNum = query.configNum();
-        int lastConfigNum = shardConfigList.size() - 1;
-        if (configNum >= 0 && configNum <= lastConfigNum) {
-            return new ShardConfig(configNum,
-                    shardConfigList.get(configNum).groupInfo());
-        } else if (configNum == -1 || configNum > lastConfigNum) {
-            return new ShardConfig(lastConfigNum,
-                    shardConfigList.get(lastConfigNum).groupInfo());
-        } else {
+        if (shardConfigList.isEmpty()) {
+            // first config has not been created
             return new Error();
         }
+
+        int configNum = query.configNum();
+        int lastConfigNum = getLastConfigNum();
+        if (configNum == -1 || configNum > lastConfigNum) {
+            // get last config
+            return new ShardConfig(lastConfigNum,
+                    shardConfigList.get(lastConfigNum).groupInfo());
+        }
+
+        assert(configNum >= 0) : "config number should be >= -1";
+        return new ShardConfig(configNum,
+                shardConfigList.get(configNum).groupInfo());
     }
 
     //util
+    private int getLastConfigNum() {
+        return shardConfigList.size() - 1;
+    }
 }
