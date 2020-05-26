@@ -24,13 +24,21 @@ public final class ShardMaster implements Application {
     private final int numShards;
 
     // Your code here...
+
+    // history of shard config
     private final List<ShardConfig> shardConfigList;
-    private final List<Integer> currentGroupInfo;
+    // assignment of each shard to group id (index -> shard id, entry -> group id)
+//    private final List<Integer> currentGroupInfo;
+    private final int[] currentGroupInfo;
+    // group number of the next group
+    private int nextGroupNumber;
 
     public ShardMaster(int numShards) {
         this.numShards = numShards;
         this.shardConfigList = new ArrayList<>();
-        this.currentGroupInfo = new ArrayList<>();
+//        this.currentGroupInfo = new ArrayList<>();
+        this.currentGroupInfo = new int[numShards];
+        this.nextGroupNumber = 0;
     }
 
     public interface ShardMasterCommand extends Command {
@@ -118,85 +126,101 @@ public final class ShardMaster implements Application {
 
     private Result executeJoin(Join join) {
         int groupId = join.groupId();
-        Set<Address> servers = join.servers();
-        int lastConfigNum = shardConfigList.size() - 1;
+        Set<Address> servers = new HashSet<>(join.servers());
+        int lastConfigNum = getLastConfigNum();
         Map<Integer, Pair<Set<Address>, Set<Integer>>> newGroupInfo =
                 new HashMap<>();
         if (lastConfigNum < INITIAL_CONFIG_NUM) {
+            // first config
             Set<Integer> shardIds = new HashSet<>();
             for (int i = 0; i < numShards; i++) {
                 shardIds.add(i);
-                currentGroupInfo.add(groupId);
+                currentGroupInfo[i] = groupId;
             }
-            newGroupInfo.put(INITIAL_CONFIG_NUM, new ImmutablePair<>(servers, shardIds));
-            ShardConfig newConfig = new ShardConfig(lastConfigNum + 1, newGroupInfo);
+            newGroupInfo.put(groupId, new ImmutablePair<>(servers, shardIds));
+            ShardConfig newConfig = new ShardConfig(INITIAL_CONFIG_NUM, newGroupInfo);
             shardConfigList.add(newConfig);
             return newConfig;
         }
-        else {
-            Map<Integer, Pair<Set<Address>, Set<Integer>>> groupInfo =
-                    shardConfigList.get(lastConfigNum).groupInfo();
-            if (groupInfo.containsKey(groupId)) {
-                return new Error();
-            }else {
-                newGroupInfo.putAll(groupInfo);
 
-                List<Integer> curShardsSize = new ArrayList<>();
-                int maxNum = 0;
-                for (int gid: newGroupInfo.keySet()) {
-                    int shardSize = newGroupInfo.get(gid).getRight().size();
-                    curShardsSize.add(shardSize);
-                    if (shardSize > maxNum) {
-                        maxNum = shardSize;
-                    }
-                }
+        Map<Integer, Pair<Set<Address>, Set<Integer>>> groupInfo =
+                shardConfigList.get(lastConfigNum).groupInfo();
+        if (groupInfo.containsKey(groupId)) {
+            // group id already exist
+            return new Error();
+        }
 
-                int maxShardNum = maxNum - 1;
-                for (int addShard = 0; addShard < maxShardNum; maxShardNum--) {
-                    for (int shardSize: curShardsSize) {
-                        if (shardSize - maxShardNum > 0) {
-                            addShard++;
-                        }
-                    }
-                }
+        newGroupInfo.putAll(groupInfo);
 
-                Set<Integer> newJoinShard = new HashSet<>();
-                int addedJoinShard = 0;
-                for (int gid: newGroupInfo.keySet()) {
-                    Set<Integer> shardSet = newGroupInfo.get(gid).getRight();
-                    if (shardSet.size() > maxShardNum) {
-                        Set<Integer> newShards = new HashSet<>(shardSet);
-                        int removeShardNum = shardSet.size() - maxShardNum;
-                        int i = 0;
-                        for (int shard: shardSet) {
-                            if (i >= removeShardNum || addedJoinShard >= maxShardNum) {
-                                break;
-                            }
-                            newShards.remove(shard);
-                            newJoinShard.add(shard);
-                            currentGroupInfo.set(shard, groupId);
-                            addedJoinShard++;
-                            i++;
-                        }
-
-                        newGroupInfo.put(gid, new ImmutablePair<>(
-                                newGroupInfo.get(gid).getLeft(), newShards));
-                    }
-                    if (addedJoinShard >= maxShardNum) {
-                        break;
-                    }
-                }
-                newGroupInfo.put(groupId, new ImmutablePair<>(servers, newJoinShard));
-                ShardConfig newConfig = new ShardConfig(lastConfigNum + 1, newGroupInfo);
-                shardConfigList.add(newConfig);
-                return new Ok();
+        List<Integer> curShardsSize = new ArrayList<>();
+        int maxNum = 0;
+        for (int gid: newGroupInfo.keySet()) {
+            int shardSize = newGroupInfo.get(gid).getRight().size();
+            curShardsSize.add(shardSize);
+            if (shardSize > maxNum) {
+                maxNum = shardSize;
             }
         }
+
+//        int maxShardNum = maxNum - 1;
+//        for (int addShard = 0; addShard < maxShardNum; maxShardNum--) {
+//            for (int shardSize: curShardsSize) {
+//                if (shardSize - maxShardNum > 0) {
+//                    addShard++;
+//                }
+//            }
+//        }
+        int lo = 0, hi = maxNum;
+        while (hi - lo >= 1) {
+            int mid = lo + ((hi - lo) / 2);
+            int excessShardsCount = getExcessShardsCount(mid, curShardsSize);
+            if (excessShardsCount < mid) {
+                hi = mid;
+            } else {
+                lo = mid;
+                if (excessShardsCount == mid) {
+                    break;
+                }
+            }
+        }
+        int maxShardNum = lo;
+
+        Set<Integer> newJoinShard = new HashSet<>();
+        for (int gid: newGroupInfo.keySet()) {
+            Set<Integer> shardSet = newGroupInfo.get(gid).getRight();
+            if (shardSet.size() > maxShardNum) {
+                // distribute shards from this group to the joining group
+                Set<Integer> newShards = new HashSet<>(shardSet);
+                int removeShardNum = shardSet.size() - maxShardNum;
+                int i = 0;
+                for (int shard: shardSet) {
+                    if (i >= removeShardNum || newJoinShard.size() >= maxShardNum) {
+                        break;
+                    }
+                    newShards.remove(shard);
+                    newJoinShard.add(shard);
+                    currentGroupInfo[shard] = groupId;
+                    i++;
+                }
+
+                newGroupInfo.put(gid, new ImmutablePair<>(
+                        newGroupInfo.get(gid).getLeft(), newShards));
+            }
+
+            if (newJoinShard.size() >= maxShardNum) {
+                // joining group is full
+                break;
+            }
+        }
+        newGroupInfo.put(groupId, new ImmutablePair<>(servers, newJoinShard));
+        ShardConfig newConfig = new ShardConfig(lastConfigNum + 1, newGroupInfo);
+        shardConfigList.add(newConfig);
+        return new Ok();
     }
 
     private Result executeLeave(Leave leave) {
         int groupId = leave.groupId();
-        int lastConfigNum = shardConfigList.size() - 1;
+        int lastConfigNum = getLastConfigNum();
         if (lastConfigNum < INITIAL_CONFIG_NUM) {
             return new Error();
         } else {
@@ -258,7 +282,7 @@ public final class ShardMaster implements Application {
     private Result executeMove(Move move) {
         int groupId = move.groupId();
         int shardNum = move.shardNum();
-        int lastConfigNum = shardConfigList.size() - 1;
+        int lastConfigNum = getLastConfigNum();
         if (lastConfigNum < INITIAL_CONFIG_NUM || shardNum < 0 ||
                 shardNum >= numShards) {
             return new Error();
@@ -317,5 +341,15 @@ public final class ShardMaster implements Application {
     //util
     private int getLastConfigNum() {
         return shardConfigList.size() - 1;
+    }
+
+    private int getExcessShardsCount(int shardsCountThreshold, List<Integer> shardsCounts) {
+        int excessShardsCount = 0;
+        for (int shardsCount: shardsCounts) {
+            if (shardsCount > shardsCountThreshold) {
+                excessShardsCount += shardsCount - shardsCountThreshold;
+            }
+        }
+        return excessShardsCount;
     }
 }
