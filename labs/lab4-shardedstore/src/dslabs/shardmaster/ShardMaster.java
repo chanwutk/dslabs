@@ -5,11 +5,13 @@ import dslabs.framework.Application;
 import dslabs.framework.Command;
 import dslabs.framework.Result;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
@@ -24,19 +26,19 @@ public final class ShardMaster implements Application {
     private final int numShards;
 
     // Your code here...
+    private static final Comparator<Pair<Integer, Set<Integer>>> SIZE_CMP = Comparator.comparingInt(e -> e.getRight().size());
+    private static final Comparator<Pair<Integer, Set<Integer>>> SIZE_GID_CMP = SIZE_CMP.thenComparingInt(Pair::getLeft);
     private static final Result OK = new Ok();
     private static final Result ERROR = new Error();
 
     // history of shard config
     private final List<ShardConfig> shardConfigList;
-    // assignment of each shard to group id (index -> shard id, entry -> group id)
-//    private final List<Integer> currentGroupInfo;
+    // assignment of each shard
     private final int[] currentGroupInfo;
 
     public ShardMaster(int numShards) {
         this.numShards = numShards;
         this.shardConfigList = new ArrayList<>();
-//        this.currentGroupInfo = new ArrayList<>();
         this.currentGroupInfo = new int[numShards + 1];
     }
 
@@ -136,7 +138,7 @@ public final class ShardMaster implements Application {
                 shardIds.add(i);
                 currentGroupInfo[i] = groupId;
             }
-            newGroupInfo.put(groupId, new ImmutablePair<>(servers, shardIds));
+            newGroupInfo.put(groupId, p(servers, shardIds));
             ShardConfig newConfig = new ShardConfig(INITIAL_CONFIG_NUM, newGroupInfo);
             shardConfigList.add(newConfig);
             return OK;
@@ -149,17 +151,17 @@ public final class ShardMaster implements Application {
             return ERROR;
         }
 
-        newGroupInfo.putAll(groupInfo);
+//        newGroupInfo.putAll(groupInfo);
 
-        List<Integer> curShardsSize = new ArrayList<>();
-        int maxNum = 0;
-        for (int gid: newGroupInfo.keySet()) {
-            int shardSize = newGroupInfo.get(gid).getRight().size();
-            curShardsSize.add(shardSize);
-            if (shardSize > maxNum) {
-                maxNum = shardSize;
-            }
-        }
+//        List<Integer> curShardsSize = new ArrayList<>();
+//        int maxNum = 0;
+//        for (int gid: newGroupInfo.keySet()) {
+//            int shardSize = newGroupInfo.get(gid).getRight().size();
+//            curShardsSize.add(shardSize);
+//            if (shardSize > maxNum) {
+//                maxNum = shardSize;
+//            }
+//        }
 
 //        int maxShardNum = maxNum - 1;
 //        for (int addShard = 0; addShard < maxShardNum; maxShardNum--) {
@@ -169,48 +171,45 @@ public final class ShardMaster implements Application {
 //                }
 //            }
 //        }
-        int lo = -1, hi = maxNum;
-        while (hi - lo > 1) {
-            int mid = (hi + lo + 1) / 2;
-            int excessShardsCount = getExcessShardsCount(mid, curShardsSize);
-            if (excessShardsCount > mid) {
-                lo = mid;
-            } else {
-                hi = mid;
-                if (excessShardsCount == mid) {
-                    break;
-                }
-            }
+//
+//        Set<Integer> newJoinShard = new HashSet<>();
+//        for (int gid: newGroupInfo.keySet()) {
+//            Set<Integer> shardSet = newGroupInfo.get(gid).getRight();
+//            if (shardSet.size() > maxShardNum) {
+//                // distribute shards from this group to the joining group
+//                Set<Integer> newShards = new HashSet<>(shardSet);
+//                int removeShardNum = shardSet.size() - maxShardNum;
+//                int i = 0;
+//                for (int shard: shardSet) {
+//                    if (i >= removeShardNum || newJoinShard.size() >= maxShardNum) {
+//                        break;
+//                    }
+//                    newShards.remove(shard);
+//                    newJoinShard.add(shard);
+//                    currentGroupInfo[shard] = groupId;
+//                    i++;
+//                }
+//
+//                newGroupInfo.put(gid, modifyShards(newGroupInfo.get(gid), newShards));
+//            }
+//
+//            if (newJoinShard.size() >= maxShardNum) {
+//                // joining group is full
+//                break;
+//            }
+//        }
+
+        TreeSet<Pair<Integer, Set<Integer>>> groups = new TreeSet<>(
+                SIZE_GID_CMP);
+        for (Integer gid : groupInfo.keySet()) {
+            Set<Integer> clonedShards = new HashSet<>(groupInfo.get(gid).getRight());
+            groups.add(p(gid, clonedShards));
         }
-        int maxShardNum = hi;
+        groups.add(p(groupId, new HashSet<>()));
+        balance(groups);
 
-        Set<Integer> newJoinShard = new HashSet<>();
-        for (int gid: newGroupInfo.keySet()) {
-            Set<Integer> shardSet = newGroupInfo.get(gid).getRight();
-            if (shardSet.size() > maxShardNum) {
-                // distribute shards from this group to the joining group
-                Set<Integer> newShards = new HashSet<>(shardSet);
-                int removeShardNum = shardSet.size() - maxShardNum;
-                int i = 0;
-                for (int shard: shardSet) {
-                    if (i >= removeShardNum || newJoinShard.size() >= maxShardNum) {
-                        break;
-                    }
-                    newShards.remove(shard);
-                    newJoinShard.add(shard);
-                    currentGroupInfo[shard] = groupId;
-                    i++;
-                }
-
-                newGroupInfo.put(gid, modifyShards(newGroupInfo.get(gid), newShards));
-            }
-
-            if (newJoinShard.size() >= maxShardNum) {
-                // joining group is full
-                break;
-            }
-        }
-        newGroupInfo.put(groupId, new ImmutablePair<>(servers, newJoinShard));
+        newGroupInfo = makeGroupInfo(groups, groupInfo);
+        newGroupInfo.put(groupId, p(servers, newGroupInfo.get(groupId).getRight()));
         ShardConfig newConfig = new ShardConfig(lastConfigNum + 1, newGroupInfo);
         shardConfigList.add(newConfig);
         return OK;
@@ -231,50 +230,62 @@ public final class ShardMaster implements Application {
             return ERROR;
         }
 
-        Map<Integer, Pair<Set<Address>, Set<Integer>>> newGroupInfo =
-                new HashMap<>(groupInfo);
+//        Map<Integer, Pair<Set<Address>, Set<Integer>>> newGroupInfo =
+//                new HashMap<>(groupInfo);
+//
+//        List<Integer> freeShards = new ArrayList<>(
+//                groupInfo.get(groupId).getRight());
+//        int numFreeShards = freeShards.size();
+//        newGroupInfo.remove(groupId);
+//
+//        List<Integer> curShardsSize = new ArrayList<>();
+//        for (int gid: newGroupInfo.keySet()) {
+//            curShardsSize.add(newGroupInfo.get(gid).getRight().size());
+//        }
+//
+//        int minShardNum = 1;
+//        // TODO: should this be numFreeShards > number of groups?
+//        // TODO: do binary search here
+//        for (; numFreeShards > 0; minShardNum++) {
+//            for (int shardSize: curShardsSize) {
+//                if (minShardNum > shardSize) {
+//                    numFreeShards--;
+//                }
+//            }
+//        }
+//
+//        numFreeShards = freeShards.size();
+//        int curAssignShards = 0;
+//        for (int gid: newGroupInfo.keySet()) {
+//            Set<Integer> shardSet = newGroupInfo.get(gid).getRight();
+//            if (shardSet.size() < minShardNum) {
+//                int addShardNum = minShardNum - shardSet.size();
+//                Set<Integer> newShards = new HashSet<>(shardSet);
+//                for (int i = 0; i < addShardNum && curAssignShards < numFreeShards; i++) {
+//                    int shardIndex = freeShards.get(curAssignShards);
+//                    newShards.add(shardIndex);
+//                    currentGroupInfo[shardIndex] = gid;
+//                    curAssignShards++;
+//                }
+//                newGroupInfo.put(gid, modifyShards(newGroupInfo.get(gid), newShards));
+//            }
+//            if (curAssignShards >= numFreeShards) {
+//                break;
+//            }
+//        }
 
-        List<Integer> freeShards = new ArrayList<>(
-                newGroupInfo.get(groupId).getRight());
-        int numFreeShards = freeShards.size();
-        newGroupInfo.remove(groupId);
-
-        List<Integer> curShardsSize = new ArrayList<>();
-        for (int gid: newGroupInfo.keySet()) {
-            curShardsSize.add(newGroupInfo.get(gid).getRight().size());
-        }
-
-        int minShardNum = 1;
-        // TODO: should this be numFreeShards > number of groups?
-        // TODO: do binary search here
-        for (; numFreeShards > 0; minShardNum++) {
-            for (int shardSize: curShardsSize) {
-                if (minShardNum > shardSize) {
-                    numFreeShards--;
-                }
+        TreeSet<Pair<Integer, Set<Integer>>> groups = new TreeSet<>(
+                SIZE_GID_CMP);
+        for (Integer gid : groupInfo.keySet()) {
+            if (gid != groupId) {
+                Set<Integer> clonedShards = new HashSet<>(groupInfo.get(gid).getRight());
+                groups.add(p(gid, clonedShards));
             }
         }
+        groups.last().getRight().addAll(groupInfo.get(groupId).getRight());
+        balance(groups);
 
-        numFreeShards = freeShards.size();
-        int curAssignShards = 0;
-        for (int gid: newGroupInfo.keySet()) {
-            Set<Integer> shardSet = newGroupInfo.get(gid).getRight();
-            if (shardSet.size() < minShardNum) {
-                int addShardNum = minShardNum - shardSet.size();
-                Set<Integer> newShards = new HashSet<>(shardSet);
-                for (int i = 0; i < addShardNum && curAssignShards < numFreeShards; i++) {
-                    int shardIndex = freeShards.get(curAssignShards);
-                    newShards.add(shardIndex);
-                    currentGroupInfo[shardIndex] = gid;
-                    curAssignShards++;
-                }
-                newGroupInfo.put(gid, modifyShards(newGroupInfo.get(gid), newShards));
-            }
-            if (curAssignShards >= numFreeShards) {
-                break;
-            }
-        }
-        ShardConfig newConfig = new ShardConfig(lastConfigNum + 1, newGroupInfo);
+        ShardConfig newConfig = new ShardConfig(lastConfigNum + 1, makeGroupInfo(groups, groupInfo));
         shardConfigList.add(newConfig);
         return OK;
     }
@@ -311,7 +322,7 @@ public final class ShardMaster implements Application {
         Set<Integer> newFromShard = new HashSet<>(fromGid.getRight());
         Set<Integer> newToShard = new HashSet<>(toGid.getRight());
 
-        assert(newFromShard.contains(shardNum)) : "origin group does not contain the moving shard";
+        assert(newFromShard.contains(shardNum));
         newFromShard.remove(shardNum);
         newToShard.add(shardNum);
 
@@ -338,29 +349,60 @@ public final class ShardMaster implements Application {
         }
 
         assert(configNum >= 0) : "config number should be >= -1";
+        // TODO: clone groupInfo to prevent rep-exposure
         return new ShardConfig(configNum,
                 shardConfigList.get(configNum).groupInfo());
     }
 
-    //util
+    // util
     private int getLastConfigNum() {
         return shardConfigList.size() - 1;
-    }
-
-    private int getExcessShardsCount(int shardsCountThreshold, List<Integer> shardsCounts) {
-        int excessShardsCount = 0;
-        for (int shardsCount: shardsCounts) {
-            if (shardsCount > shardsCountThreshold) {
-                excessShardsCount += shardsCount - shardsCountThreshold;
-            }
-        }
-        return excessShardsCount;
     }
 
     private Pair<Set<Address>, Set<Integer>> modifyShards(
             Pair<Set<Address>, Set<Integer>> group,
             Set<Integer> shard
     ) {
-        return new ImmutablePair<>(group.getLeft(), shard);
+        return p(group.getLeft(), shard);
+    }
+
+    private <L, R> Pair<L, R> p(L left, R right) {
+        return new ImmutablePair<>(left, right);
+    }
+
+    private Map<Integer, Pair<Set<Address>, Set<Integer>>> makeGroupInfo(
+            Set<Pair<Integer, Set<Integer>>> groups,
+            Map<Integer, Pair<Set<Address>, Set<Integer>>> oldGroupInfo) {
+        Map<Integer, Pair<Set<Address>, Set<Integer>>> groupInfo = new HashMap<>();
+        for (Pair<Integer, Set<Integer>> group : groups) {
+            int gid = group.getLeft();
+            Set<Integer> shards = group.getRight();
+            Set<Address> groupServers = oldGroupInfo.containsKey(gid)
+                    ? oldGroupInfo.get(gid).getLeft()
+                    : null;
+            groupInfo.put(gid, p(groupServers, shards));
+        }
+        return groupInfo;
+    }
+
+    private void balance(TreeSet<Pair<Integer, Set<Integer>>> groups) {
+        while (true) {
+            Pair<Integer, Set<Integer>> first = groups.first();
+            Pair<Integer, Set<Integer>> last = groups.last();
+            Set<Integer> firstShardSet = first.getRight();
+            Set<Integer> lastShardSet = last.getRight();
+
+            if (firstShardSet.size() + 1 >= lastShardSet.size()) {
+                return;
+            }
+
+            groups.remove(first);
+            groups.remove(last);
+            int shard = lastShardSet.iterator().next();
+            lastShardSet.remove(shard);
+            firstShardSet.add(shard);
+            groups.add(first);
+            groups.add(last);
+        }
     }
 }
