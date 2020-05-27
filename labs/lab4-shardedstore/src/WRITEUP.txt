@@ -1,7 +1,7 @@
 Lab 4 Writeup
 
-Partner 1 name and net ID:
-Partner 2 name and net ID:
+Partner 1 name and net ID: Chanwut Kittivorawong (chanwutk)
+Partner 2 name and net ID: Podshara Chanrungmaneekul (shon2)
 
 Brief description of design:
 

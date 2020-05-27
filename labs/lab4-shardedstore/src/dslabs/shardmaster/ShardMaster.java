@@ -33,7 +33,7 @@ public final class ShardMaster implements Application {
 
     // history of shard config
     private final List<ShardConfig> shardConfigList;
-    // assignment of each shard
+    // assignment of each shard (shard number starts at 1)
     private final int[] currentGroupInfo;
 
     public ShardMaster(int numShards) {
