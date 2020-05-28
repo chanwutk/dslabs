@@ -4,7 +4,19 @@ Partner 1 name and net ID: Chanwut Kittivorawong (chanwutk)
 Partner 2 name and net ID: Podshara Chanrungmaneekul (shon2)
 
 Brief description of design:
+- part 1:
+  - rebalancing: to rebalancing all the group, take a shard from the group that is
+    responsible for the highest number of shards to the group that is responsible for the
+    lowest number of shards. Repeat until the group that is responsible for the highest number
+    of shards and the group that is responsible for the lowest number of shards has difference
+    in number of shards less than or equal to 1.
+  - join: add new group being responsible for 0 shard. Then, rebalance.
+  - leave: remove the group. Transfer all the shard to the group that is responsible for
+    the highest number of shards. Then, rebalance.
+  - move: move the shard.
+  - query: return the config.
 
 
 Hours spent on the lab:
+- part 1: 10
 
