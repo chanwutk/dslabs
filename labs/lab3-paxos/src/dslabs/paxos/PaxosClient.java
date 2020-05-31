@@ -87,7 +87,7 @@ public final class PaxosClient extends Node implements Client {
     private synchronized void onClientTimer(ClientTimer t) {
         // Your code here...
         PaxosRequest paxosRequest = t.paxosRequest();
-        if (paxosRequest.amoCommand().sequenceNum() == sequenceNum) {
+        if (paxosRequest.amoCommand().sequenceNum() == sequenceNum && result == null) {
             broadcast(paxosRequest);
             set(t, CLIENT_RETRY_MILLIS);
         }

@@ -11,4 +11,14 @@ public final class AMOCommand implements Command {
     @NonNull private final Command command;
     @NonNull private final Address sender;
     private final int sequenceNum;
+    private final boolean executeReadOnly;
+
+    public AMOCommand(Command command, Address sender, int sequenceNum) {
+        this(command, sender, sequenceNum, false);
+    }
+
+    public AMOCommand(Command command, Address sender) {
+        this(command, sender, -1, true);
+        assert(command.readOnly());
+    }
 }

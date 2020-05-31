@@ -7,11 +7,11 @@ import dslabs.framework.Address;
 import dslabs.framework.Application;
 import dslabs.framework.Command;
 import dslabs.framework.Node;
-import java.util.ArrayList;
+import dslabs.framework.Result;
+import dslabs.kvstore.KVStore;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -84,6 +84,8 @@ public class PaxosServer extends Node {
 
     private int p2a_seq;
 
+    private Address shardStoreServer;
+
     /* -------------------------------------------------------------------------
         Construction and Initialization
        -----------------------------------------------------------------------*/
@@ -96,6 +98,17 @@ public class PaxosServer extends Node {
         this.address = address;
         majority = (servers.length / 2) + 1;
 //         LOGGER.setLevel(Level.OFF);
+    }
+
+    public PaxosServer(Address address, Address[] servers, Address shardStoreServer) {
+        // constructor for shard store server
+        super(address);
+        this.servers = servers;
+
+        this.amoApplication = new AMOApplication<>(new KVStoreDummy());
+        this.address = address;
+        majority = (servers.length / 2) + 1;
+        this.shardStoreServer = shardStoreServer;
     }
 
 
@@ -213,6 +226,15 @@ public class PaxosServer extends Node {
         }
 
         AMOCommand amoCommand = m.amoCommand();
+        assert (amoCommand.sender() == sender);
+
+        if (amoCommand.executeReadOnly()) {
+            Result result = amoApplication.executeReadOnly(amoCommand.command());
+            int sequenceNum = amoCommand.sequenceNum();
+            send(new PaxosReply(new AMOResult(result, sender, sequenceNum)), sender);
+            return;
+        }
+
 //        LOGGER.info("Request: " + amoCommand);
         if (amoApplication.alreadyExecuted(amoCommand)) {
             // outdated request
@@ -760,5 +782,12 @@ public class PaxosServer extends Node {
             slot_out = slot + 1;
         }
         paxos_log.put(slot, entry);
+    }
+
+    private static class KVStoreDummy extends KVStore {
+        @Override
+        public KVStoreResult execute(Command command) {
+            return null;
+        }
     }
 }
