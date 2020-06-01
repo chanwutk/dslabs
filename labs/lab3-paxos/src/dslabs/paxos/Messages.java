@@ -13,14 +13,14 @@ import static dslabs.paxos.PaxosLogSlotStatus.CHOSEN;
 // Your code here...
 @Data
 class ProposeMessage implements Message {
-    @NonNull private final int slot;
+    private final int slot;
     @NonNull private final AMOCommand amoCommand;
 }
 
 @Data
 class DecisionMessage implements Message {
     @NonNull private final LogEntry entry;
-    @NonNull private final int slot;
+    private final int slot;
 }
 
 @Data

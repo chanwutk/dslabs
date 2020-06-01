@@ -11,11 +11,13 @@ import dslabs.paxos.PaxosReply;
 import dslabs.paxos.PaxosRequest;
 import dslabs.shardmaster.ShardMaster.Query;
 import dslabs.shardmaster.ShardMaster.ShardConfig;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
-import org.apache.commons.lang3.tuple.Pair;
 
 import static dslabs.shardmaster.ShardMaster.INITIAL_CONFIG_NUM;
 
@@ -24,13 +26,11 @@ import static dslabs.shardmaster.ShardMaster.INITIAL_CONFIG_NUM;
 @EqualsAndHashCode(callSuper = true)
 public class ShardStoreClient extends ShardStoreNode implements Client {
     // Your code here...
-    private final int numShards;
-
     private Result result = null;
     private int seqNum = 0;
 
     private int configNum;
-    private Set<Address>[] shardAssignments;
+    private Map<Integer, Set<Address>> shardAssignments;
 
     /* -------------------------------------------------------------------------
         Construction and Initialization
@@ -38,13 +38,12 @@ public class ShardStoreClient extends ShardStoreNode implements Client {
     public ShardStoreClient(Address address, Address[] shardMasters,
                             int numShards) {
         super(address, shardMasters, numShards);
-        this.numShards = numShards;
     }
 
     @Override
     public synchronized void init() {
         // Your code here...
-        shardAssignments = new Set[numShards + 1];
+        shardAssignments = new HashMap<Integer, Set<Address>>();
         configNum = INITIAL_CONFIG_NUM - 1;
         onQueryTimer(new QueryTimer());
     }
@@ -95,6 +94,7 @@ public class ShardStoreClient extends ShardStoreNode implements Client {
     // Your code here...
 
     private void handlePaxosReply(PaxosReply m, Address sender) {
+        // reply from Shard Master (Query result)
         Result result = m.amoResult().result();
         assert (result instanceof ShardConfig);
 
@@ -106,11 +106,10 @@ public class ShardStoreClient extends ShardStoreNode implements Client {
         }
 
         configNum = m_configNum;
-        for (Pair<Set<Address>, Set<Integer>> value : config.groupInfo().values()) {
-            for (int shard : value.getRight()) {
-                shardAssignments[shard] = value.getLeft();
-            }
-        }
+        config.groupInfo().forEach((k, v) -> {
+            Set<Address> group = new HashSet<>(v.getLeft());
+            v.getRight().forEach(shard -> shardAssignments.put(shard, group));
+        });
     }
 
     /* -------------------------------------------------------------------------
@@ -126,7 +125,8 @@ public class ShardStoreClient extends ShardStoreNode implements Client {
         if (configNum >= INITIAL_CONFIG_NUM) {
             SingleKeyCommand command = (SingleKeyCommand)amoCommand.command();
             int shard = keyToShard(command.key());
-            broadcast(new ShardStoreRequest(amoCommand), shardAssignments[shard]);
+            Set<Address> group = shardAssignments.get(shard);
+            broadcast(new ShardStoreRequest(amoCommand), group);
         }
         set(t, ClientTimer.CLIENT_RETRY_MILLIS);
     }

@@ -26,8 +26,10 @@ public final class ShardMaster implements Application {
     private final int numShards;
 
     // Your code here...
-    private static final Comparator<Pair<Integer, Set<Integer>>> SIZE_CMP = Comparator.comparingInt(e -> e.getRight().size());
-    private static final Comparator<Pair<Integer, Set<Integer>>> SIZE_GID_CMP = SIZE_CMP.thenComparingInt(Pair::getLeft);
+    private static final Comparator<Pair<Integer, Set<Integer>>> SIZE_CMP =
+            Comparator.comparingInt(e -> e.getRight().size());
+    private static final Comparator<Pair<Integer, Set<Integer>>> SIZE_GID_CMP =
+            SIZE_CMP.thenComparingInt(Pair::getLeft);
     private static final Result OK = new Ok();
     private static final Result ERROR = new Error();
 
@@ -153,10 +155,7 @@ public final class ShardMaster implements Application {
 
         // clone every set of shards in each group
         TreeSet<Pair<Integer, Set<Integer>>> groups = new TreeSet<>(SIZE_GID_CMP);
-        for (Integer gid : groupInfo.keySet()) {
-            Set<Integer> clonedShards = new HashSet<>(groupInfo.get(gid).getRight());
-            groups.add(p(gid, clonedShards));
-        }
+        groupInfo.forEach((gid, info) -> groups.add(p(gid, new HashSet<>(info.getRight()))));
 
         // add the new group
         groups.add(p(groupId, new HashSet<>()));
@@ -191,13 +190,12 @@ public final class ShardMaster implements Application {
 
         // clone every set of shards in each group
         TreeSet<Pair<Integer, Set<Integer>>> groups = new TreeSet<>(SIZE_GID_CMP);
-        for (Integer gid : groupInfo.keySet()) {
+        groupInfo.forEach((gid, info) -> {
             if (gid != groupId) {
                 // exclude the leaving group
-                Set<Integer> clonedShards = new HashSet<>(groupInfo.get(gid).getRight());
-                groups.add(p(gid, clonedShards));
+                groups.add(p(gid, new HashSet<>(info.getRight())));
             }
-        }
+        });
 
         // add shard of the leaving group to the group that holds the most shard
         groups.last().getRight().addAll(groupInfo.get(groupId).getRight());
@@ -263,14 +261,11 @@ public final class ShardMaster implements Application {
         int lastConfigNum = getLastConfigNum();
         if (configNum == -1 || configNum > lastConfigNum) {
             // get last config
-            return new ShardConfig(lastConfigNum,
-                    shardConfigList.get(lastConfigNum).groupInfo());
+            return getShardConfig(lastConfigNum);
         }
 
         assert(configNum >= 0) : "config number should be >= -1";
-        // TODO: clone groupInfo to prevent rep-exposure
-        return new ShardConfig(configNum,
-                shardConfigList.get(configNum).groupInfo());
+        return getShardConfig(configNum);
     }
 
     // util
@@ -291,16 +286,17 @@ public final class ShardMaster implements Application {
 
     private Map<Integer, Pair<Set<Address>, Set<Integer>>> makeGroupInfo(
             Set<Pair<Integer, Set<Integer>>> groups,
-            Map<Integer, Pair<Set<Address>, Set<Integer>>> oldGroupInfo) {
+            Map<Integer, Pair<Set<Address>, Set<Integer>>> oldGroupInfo
+    ) {
         Map<Integer, Pair<Set<Address>, Set<Integer>>> groupInfo = new HashMap<>();
-        for (Pair<Integer, Set<Integer>> group : groups) {
+        groups.forEach(group -> {
             int gid = group.getLeft();
             Set<Integer> shards = group.getRight();
             Set<Address> groupServers = oldGroupInfo.containsKey(gid)
                     ? oldGroupInfo.get(gid).getLeft()
                     : null;
             groupInfo.put(gid, p(groupServers, shards));
-        }
+        });
         return groupInfo;
     }
 
@@ -328,5 +324,17 @@ public final class ShardMaster implements Application {
     private void newConfig(Map<Integer, Pair<Set<Address>, Set<Integer>>> groupInfo) {
         ShardConfig newConfig = new ShardConfig(shardConfigList.size(), groupInfo);
         shardConfigList.add(newConfig);
+    }
+
+    private ShardConfig getShardConfig(int configNum) {
+        Map<Integer, Pair<Set<Address>, Set<Integer>>> clonedGroupInfo =
+                new HashMap<>();
+
+        shardConfigList.get(configNum).groupInfo().forEach((key, value) -> {
+            Set<Address> newServers = new HashSet<>(value.getLeft());
+            Set<Integer> newShards = new HashSet<>(value.getRight());
+            clonedGroupInfo.put(key, new ImmutablePair<>(newServers, newShards));
+        });
+        return new ShardConfig(configNum, clonedGroupInfo);
     }
 }
