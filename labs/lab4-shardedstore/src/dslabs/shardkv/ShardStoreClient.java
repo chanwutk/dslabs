@@ -130,7 +130,9 @@ public class ShardStoreClient extends ShardStoreNode implements Client {
             SingleKeyCommand command = (SingleKeyCommand) amoCommand.command();
             int shard = keyToShard(command.key());
             Set<Address> group = shardAssignments.get(shard);
-            broadcast(new ShardStoreRequest(amoCommand), group);
+            if (group != null) {
+                broadcast(new ShardStoreRequest(amoCommand), group);
+            }
         }
         set(t, ClientTimer.CLIENT_RETRY_MILLIS);
     }

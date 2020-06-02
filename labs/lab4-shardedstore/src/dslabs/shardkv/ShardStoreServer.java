@@ -172,9 +172,16 @@ public class ShardStoreServer extends ShardStoreNode {
     }
 
     private void processShardMove(ShardMove m, boolean replicated, boolean toReply) {
-//        LOG.info("shard move: " + m.apps().keySet());
-//        LOG.info("  " + groupId + " replicated: " + replicated);
-//        LOG.info("  " + groupId + " toReply: " + toReply);
+//        String log = "\nshard move: " + m.apps().keySet() + "\n";
+//        log += "  " + groupId + " from: " + m.sender() + "\n";
+//        log += "  " + groupId + " replicated: " + replicated + "\n";
+//        log += "  " + groupId + " toReply: " + toReply + "\n";
+//        log += "  " + groupId + " configNum: " + m.configNum() + "\n";
+//        log += "  " + groupId + " current config: " + config + "\n";
+//        Set<Integer> tmp = config.groupInfo().containsKey(groupId) ? config.groupInfo().get(groupId).getRight() : null;
+//        log += "  " + groupId + " shard compare: " + tmp + " " + apps.keySet() + "\n";
+//        LOG.info(log);
+
         if (m.configNum() != config.configNum()) {
             return;
         }
@@ -277,6 +284,11 @@ public class ShardStoreServer extends ShardStoreNode {
     }
 
     private void processAMOCommand(AMOCommand command, boolean replicated, boolean toReply) {
+        if (!correctShards()) {
+            send(new ShardStoreReply(null), command.sender());
+            return;
+        }
+
         int shard = amoCommandToShard(command);
         if (!apps.containsKey(shard)) {
             send(new ShardStoreReply(null), command.sender());

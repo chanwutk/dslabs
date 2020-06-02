@@ -26,6 +26,5 @@ public final class AMOCommand implements Command {
 
     public AMOCommand(Command command, Address sender, boolean executeReadOnly) {
         this(command, sender, -1, executeReadOnly);
-        assert(command.readOnly());
     }
 }

@@ -8,6 +8,7 @@ import dslabs.framework.Application;
 import dslabs.framework.Command;
 import dslabs.framework.Node;
 import dslabs.framework.Result;
+import java.io.Serializable;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -114,7 +115,7 @@ public class PaxosServer extends Node {
     @Override
     public void init() {
         // Your code here...
-        this.slot_in = this.slot_to_exec = this.slot_out = 1;
+        this.slot_in = this.slot_to_exec = this.min_slot_to_exec = this.slot_out = 1;
         this.paxos_log = new HashMap<>();
         this.leader = null;
         this.is_leader_alive = false;
@@ -225,7 +226,7 @@ public class PaxosServer extends Node {
         }
 
         AMOCommand amoCommand = m.amoCommand();
-        assert (amoCommand.sender() == sender);
+//        assert (amoCommand.sender() == sender);
 
         if (amoCommand.executeReadOnly()) {
             Result result = app.executeReadOnly(amoCommand.command());
@@ -278,8 +279,8 @@ public class PaxosServer extends Node {
             putLog(slot, m.entry());
         } else {
             LogEntry entry = paxos_log.get(slot);
-            assert (Objects.equals(m.entry().amoCommand(), command(slot))) :
-                    "conflicting chosen decisions (command)";
+            assert (Objects.equals(m.entry().amoCommand().command(), command(slot))) :
+                    "conflicting chosen decisions " + m.entry().amoCommand().command() + " vs " + command(slot);
             assert (Objects
                     .equals(m.entry().ballot_num(), entry.ballot_num())) :
                     "conflicting chosen decision (ballot number)";
@@ -676,7 +677,7 @@ public class PaxosServer extends Node {
     private void collectGarbage(int upto) {
         assert (upto < slot_out);
         assert (upto < slot_to_exec);
-        assert (slot_in - 1 <= upto);  // allow not garbage collecting
+//        assert (slot_in - 1 <= upto) : "slot_in - 1 = " + (slot_in-1) + " upto=" + upto;  // allow not garbage collecting
         for (; slot_in <= upto; slot_in++) {
             paxos_log.remove(slot_in);
         }
@@ -783,7 +784,7 @@ public class PaxosServer extends Node {
         paxos_log.put(slot, entry);
     }
 
-    private class AMOApplicationWrapper {
+    private class AMOApplicationWrapper implements Serializable {
         private final AMOApplication<Application> app;
         private final boolean hasApp;
 

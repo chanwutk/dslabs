@@ -241,11 +241,13 @@ public final class ShardMaster implements Application {
         Pair<Set<Address>, Set<Integer>> fromGid = groupInfo.get(oldGroupId);
         Pair<Set<Address>, Set<Integer>> toGid = groupInfo.get(groupId);
 
+        if (!fromGid.getRight().contains(shardNum)) {
+            return ERROR;
+        }
         // clone the sets of shards
         Set<Integer> newFromShard = new HashSet<>(fromGid.getRight());
         Set<Integer> newToShard = new HashSet<>(toGid.getRight());
 
-        assert(newFromShard.contains(shardNum));
         newFromShard.remove(shardNum);
         newToShard.add(shardNum);
 
@@ -321,7 +323,6 @@ public final class ShardMaster implements Application {
             groups.remove(first);
             groups.remove(last);
             int shard = lastShardSet.pop();
-//            lastShardSet.remove(shard);
             firstShardSet.push(shard);
             groups.add(first);
             groups.add(last);
