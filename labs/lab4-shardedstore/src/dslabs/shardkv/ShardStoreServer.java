@@ -172,6 +172,9 @@ public class ShardStoreServer extends ShardStoreNode {
     }
 
     private void processShardMove(ShardMove m, boolean replicated, boolean toReply) {
+//        LOG.info("shard move: " + m.apps().keySet());
+//        LOG.info("  " + groupId + " replicated: " + replicated);
+//        LOG.info("  " + groupId + " toReply: " + toReply);
         if (m.configNum() != config.configNum()) {
             return;
         }
@@ -215,6 +218,11 @@ public class ShardStoreServer extends ShardStoreNode {
     }
 
     private void processNewConfig(NewConfig m, boolean replicated, boolean toReply) {
+//        LOG.info("new config " + groupId +": " + m);
+//        LOG.info("  " + groupId + "  config: " + config);
+//        LOG.info("  " + groupId + "  replicated: " + replicated);
+//        LOG.info("  " + groupId + "  toReply: " + toReply);
+//        LOG.info("  " + groupId + "  shards: " + apps.keySet());
         if (m.config().configNum() != config.configNum() + 1) {
             return;
         }
@@ -228,9 +236,8 @@ public class ShardStoreServer extends ShardStoreNode {
         if (config.configNum() == INITIAL_CONFIG_NUM) {
             // first config
             if (config.groupInfo().containsKey(groupId)) {
-                config.groupInfo().get(groupId).getRight().forEach(shard -> {
-                    apps.put(shard, new AMOApplication<>(new KVStore()));
-                });
+                config.groupInfo().get(groupId).getRight()
+                      .forEach(shard -> apps.put(shard, new AMOApplication<>(new KVStore())));
             }
             return;
         }
@@ -240,31 +247,31 @@ public class ShardStoreServer extends ShardStoreNode {
         }
 
         Map<Integer, Pair<Set<Address>, Set<Integer>>> groupInfo = config.groupInfo();
-        if (!groupInfo.containsKey(groupId) || groupInfo.get(groupId).getRight().isEmpty()) {
-            return;
-        }
 
         Map<Integer, Set<Integer>> toSend = new HashMap<>();
-        Set<Integer> shards = groupInfo.get(groupId).getRight();
-        groupInfo.forEach((groupId, info) -> {
+        Set<Integer> shards = apps.keySet();
+        groupInfo.forEach((gid, info) -> {
+            if (gid == groupId) {
+                return;
+            }
             info.getRight().forEach(shard -> {
                 if (shards.contains(shard)) {
-                    if (!toSend.containsKey(groupId)) {
-                        toSend.put(groupId, new HashSet<>());
+                    if (!toSend.containsKey(gid)) {
+                        toSend.put(gid, new HashSet<>());
                     }
-                    toSend.get(groupId).add(shard);
+                    toSend.get(gid).add(shard);
                 }
             });
         });
 
         int configNum = config.configNum();
-        toSend.forEach((groupId, shardsToSend) -> {
+        toSend.forEach((gid, shardsToSend) -> {
             Map<Integer, AMOApplication<KVStore>> appsToSend = new HashMap<>();
             shardsToSend.forEach(shard -> {
                 appsToSend.put(shard, apps.get(shard));
             });
             ShardMove shardMove = new ShardMove(appsToSend, configNum, address());
-            Set<Address> servers = groupInfo.get(groupId).getLeft();
+            Set<Address> servers = groupInfo.get(gid).getLeft();
             onShardMoveTimer(new ShardMoveTimer(new ShardMoveMessage(shardMove), servers));
         });
     }
@@ -300,7 +307,7 @@ public class ShardStoreServer extends ShardStoreNode {
 
     private boolean correctShards() {
         if (config.groupInfo() == null) {
-            return true;
+            return apps.isEmpty();
         }
 
         if (!config.groupInfo().containsKey(groupId)) {

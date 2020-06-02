@@ -11,6 +11,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Stack;
 import java.util.TreeSet;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -26,9 +27,9 @@ public final class ShardMaster implements Application {
     private final int numShards;
 
     // Your code here...
-    private static final Comparator<Pair<Integer, Set<Integer>>> SIZE_CMP =
+    private static final Comparator<Pair<Integer, Stack<Integer>>> SIZE_CMP =
             Comparator.comparingInt(e -> e.getRight().size());
-    private static final Comparator<Pair<Integer, Set<Integer>>> SIZE_GID_CMP =
+    private static final Comparator<Pair<Integer, Stack<Integer>>> SIZE_GID_CMP =
             SIZE_CMP.thenComparingInt(Pair::getLeft);
     private static final Result OK = new Ok();
     private static final Result ERROR = new Error();
@@ -154,11 +155,15 @@ public final class ShardMaster implements Application {
         }
 
         // clone every set of shards in each group
-        TreeSet<Pair<Integer, Set<Integer>>> groups = new TreeSet<>(SIZE_GID_CMP);
-        groupInfo.forEach((gid, info) -> groups.add(p(gid, new HashSet<>(info.getRight()))));
+        TreeSet<Pair<Integer, Stack<Integer>>> groups = new TreeSet<>(SIZE_GID_CMP);
+        groupInfo.forEach((gid, info) -> {
+            Stack<Integer> stack = new Stack<>();
+            stack.addAll(info.getRight());
+            groups.add(p(gid, stack));
+        });
 
         // add the new group
-        groups.add(p(groupId, new HashSet<>()));
+        groups.add(p(groupId, new Stack<>()));
 
         // shards are now not evenly distributed -> re-balance them
         balance(groups);
@@ -189,11 +194,13 @@ public final class ShardMaster implements Application {
         }
 
         // clone every set of shards in each group
-        TreeSet<Pair<Integer, Set<Integer>>> groups = new TreeSet<>(SIZE_GID_CMP);
+        TreeSet<Pair<Integer, Stack<Integer>>> groups = new TreeSet<>(SIZE_GID_CMP);
         groupInfo.forEach((gid, info) -> {
             if (gid != groupId) {
                 // exclude the leaving group
-                groups.add(p(gid, new HashSet<>(info.getRight())));
+                Stack<Integer> stack = new Stack<>();
+                stack.addAll(info.getRight());
+                groups.add(p(gid, stack));
             }
         });
 
@@ -285,27 +292,27 @@ public final class ShardMaster implements Application {
     }
 
     private Map<Integer, Pair<Set<Address>, Set<Integer>>> makeGroupInfo(
-            Set<Pair<Integer, Set<Integer>>> groups,
+            Set<Pair<Integer, Stack<Integer>>> groups,
             Map<Integer, Pair<Set<Address>, Set<Integer>>> oldGroupInfo
     ) {
         Map<Integer, Pair<Set<Address>, Set<Integer>>> groupInfo = new HashMap<>();
         groups.forEach(group -> {
             int gid = group.getLeft();
-            Set<Integer> shards = group.getRight();
+            Stack<Integer> shards = group.getRight();
             Set<Address> groupServers = oldGroupInfo.containsKey(gid)
                     ? oldGroupInfo.get(gid).getLeft()
                     : null;
-            groupInfo.put(gid, p(groupServers, shards));
+            groupInfo.put(gid, p(groupServers, new HashSet<>(shards)));
         });
         return groupInfo;
     }
 
-    private void balance(TreeSet<Pair<Integer, Set<Integer>>> groups) {
+    private void balance(TreeSet<Pair<Integer, Stack<Integer>>> groups) {
         while (true) {
-            Pair<Integer, Set<Integer>> first = groups.first();
-            Pair<Integer, Set<Integer>> last = groups.last();
-            Set<Integer> firstShardSet = first.getRight();
-            Set<Integer> lastShardSet = last.getRight();
+            Pair<Integer, Stack<Integer>> first = groups.first();
+            Pair<Integer, Stack<Integer>> last = groups.last();
+            Stack<Integer> firstShardSet = first.getRight();
+            Stack<Integer> lastShardSet = last.getRight();
 
             if (firstShardSet.size() + 1 >= lastShardSet.size()) {
                 return;
@@ -313,9 +320,9 @@ public final class ShardMaster implements Application {
 
             groups.remove(first);
             groups.remove(last);
-            int shard = lastShardSet.iterator().next();
-            lastShardSet.remove(shard);
-            firstShardSet.add(shard);
+            int shard = lastShardSet.pop();
+//            lastShardSet.remove(shard);
+            firstShardSet.push(shard);
             groups.add(first);
             groups.add(last);
         }
