@@ -24,8 +24,8 @@ public final class AMOCommand implements Command {
         this(command, sender, sequenceNum, false);
     }
 
-    public AMOCommand(Command command, Address sender) {
-        this(command, sender, -1, true);
+    public AMOCommand(Command command, Address sender, boolean executeReadOnly) {
+        this(command, sender, -1, executeReadOnly);
         assert(command.readOnly());
     }
 }

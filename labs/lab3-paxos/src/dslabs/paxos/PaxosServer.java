@@ -8,7 +8,6 @@ import dslabs.framework.Application;
 import dslabs.framework.Command;
 import dslabs.framework.Node;
 import dslabs.framework.Result;
-import dslabs.kvstore.KVStore;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -39,7 +38,7 @@ public class PaxosServer extends Node {
     private static final Logger LOGGER = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
 
     // server's amo application
-    private final AMOApplication<Application> amoApplication;
+    private final AMOApplicationWrapper app;
     // prevent calling address() over and over
     private final Address address;
     // log for proposal
@@ -94,7 +93,7 @@ public class PaxosServer extends Node {
         this.servers = servers;
 
         // Your code here...
-        this.amoApplication = new AMOApplication<>(app);
+        this.app = new AMOApplicationWrapper(new AMOApplication<>(app));
         this.address = address;
         majority = (servers.length / 2) + 1;
 //         LOGGER.setLevel(Level.OFF);
@@ -105,7 +104,7 @@ public class PaxosServer extends Node {
         super(address);
         this.servers = servers;
 
-        this.amoApplication = new AMOApplication<>(new KVStoreDummy());
+        this.app = new AMOApplicationWrapper(null);
         this.address = address;
         majority = (servers.length / 2) + 1;
         this.shardStoreServer = shardStoreServer;
@@ -229,16 +228,16 @@ public class PaxosServer extends Node {
         assert (amoCommand.sender() == sender);
 
         if (amoCommand.executeReadOnly()) {
-            Result result = amoApplication.executeReadOnly(amoCommand.command());
+            Result result = app.executeReadOnly(amoCommand.command());
             int sequenceNum = amoCommand.sequenceNum();
             send(new PaxosReply(new AMOResult(result, sender, sequenceNum)), sender);
             return;
         }
 
 //        LOGGER.info("Request: " + amoCommand);
-        if (amoApplication.alreadyExecuted(amoCommand)) {
+        if (app.alreadyExecuted(amoCommand)) {
             // outdated request
-            send(new PaxosReply(amoApplication.execute(amoCommand)), sender);
+            send(new PaxosReply(app.execute(amoCommand)), sender);
             return;
         }
 
@@ -671,7 +670,7 @@ public class PaxosServer extends Node {
     // Your code here...
 
     private AMOResult runAMOCommand(AMOCommand amoCommand) {
-        return amoApplication.execute(amoCommand);
+        return app.execute(amoCommand);
     }
 
     private void collectGarbage(int upto) {
@@ -784,10 +783,38 @@ public class PaxosServer extends Node {
         paxos_log.put(slot, entry);
     }
 
-    private static class KVStoreDummy extends KVStore {
-        @Override
-        public KVStoreResult execute(Command command) {
+    private class AMOApplicationWrapper {
+        private final AMOApplication<Application> app;
+        private final boolean hasApp;
+
+        public AMOApplicationWrapper(AMOApplication<Application> application) {
+            app = application;
+            hasApp = app != null;
+        }
+
+        public AMOResult execute(AMOCommand command) {
+            if (hasApp) {
+                return app.execute(command);
+            }
+
+            return sendToShardStore(command.command());
+        }
+
+        public Result executeReadOnly(Command command) {
+            if (hasApp) {
+                return app.executeReadOnly(command);
+            }
+
+            return sendToShardStore(command);
+        }
+
+        private AMOResult sendToShardStore(Command command) {
+            handleMessage(new PaxosDecision(command, isLeader()), shardStoreServer);
             return null;
+        }
+
+        public boolean alreadyExecuted(AMOCommand amoCommand) {
+            return hasApp && app.alreadyExecuted(amoCommand);
         }
     }
 }

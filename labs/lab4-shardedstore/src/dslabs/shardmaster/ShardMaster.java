@@ -264,7 +264,7 @@ public final class ShardMaster implements Application {
             return getShardConfig(lastConfigNum);
         }
 
-        assert(configNum >= 0) : "config number should be >= -1";
+        assert(configNum >= 0) : "config number should be >= 0";
         return getShardConfig(configNum);
     }
 

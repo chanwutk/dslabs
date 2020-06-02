@@ -9,6 +9,7 @@ import dslabs.framework.Result;
 import dslabs.kvstore.KVStore.SingleKeyCommand;
 import dslabs.paxos.PaxosReply;
 import dslabs.paxos.PaxosRequest;
+import dslabs.shardmaster.ShardMaster.Error;
 import dslabs.shardmaster.ShardMaster.Query;
 import dslabs.shardmaster.ShardMaster.ShardConfig;
 import java.util.HashMap;
@@ -45,7 +46,7 @@ public class ShardStoreClient extends ShardStoreNode implements Client {
         // Your code here...
         shardAssignments = new HashMap<Integer, Set<Address>>();
         configNum = INITIAL_CONFIG_NUM - 1;
-        onQueryTimer(new QueryTimer());
+        onQueryTimer(new QueryTimer(0));
     }
 
     /* -------------------------------------------------------------------------
@@ -96,6 +97,9 @@ public class ShardStoreClient extends ShardStoreNode implements Client {
     private void handlePaxosReply(PaxosReply m, Address sender) {
         // reply from Shard Master (Query result)
         Result result = m.amoResult().result();
+        if (result instanceof Error) {
+            return;
+        }
         assert (result instanceof ShardConfig);
 
         ShardConfig config = (ShardConfig) result;
@@ -123,7 +127,7 @@ public class ShardStoreClient extends ShardStoreNode implements Client {
         }
 
         if (configNum >= INITIAL_CONFIG_NUM) {
-            SingleKeyCommand command = (SingleKeyCommand)amoCommand.command();
+            SingleKeyCommand command = (SingleKeyCommand) amoCommand.command();
             int shard = keyToShard(command.key());
             Set<Address> group = shardAssignments.get(shard);
             broadcast(new ShardStoreRequest(amoCommand), group);
@@ -133,7 +137,7 @@ public class ShardStoreClient extends ShardStoreNode implements Client {
 
     private void onQueryTimer(QueryTimer t) {
         Query query = new Query(-1);
-        AMOCommand command = new AMOCommand(query, address());
+        AMOCommand command = new AMOCommand(query, address(), true);
         broadcastToShardMasters(new PaxosRequest(command));
         set(t, QueryTimer.QUERY_MILLIS);
     }
