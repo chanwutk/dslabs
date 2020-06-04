@@ -52,7 +52,7 @@ public final class ShardStorePart1Test extends ShardStoreBaseTest {
     @Category(RunTests.class)
     @TestPointValue(10)
     public void test01Basic() throws InterruptedException {
-        int numGroups = 1, numServersPerGroup = 3, numShardMasters = 3,
+        int numGroups = 1, numServersPerGroup = 1, numShardMasters = 1,
                 numShards = 10;
 
         setupStates(numGroups, numServersPerGroup, numShardMasters, numShards);
@@ -72,13 +72,13 @@ public final class ShardStorePart1Test extends ShardStoreBaseTest {
     @Category(RunTests.class)
     @TestPointValue(15)
     public void test02JoinLeave() throws InterruptedException {
-        int numServersPerGroup = 3, numShardMasters = 3, numShards = 10;
+        int numServersPerGroup = 1, numShardMasters = 1, numShards = 10;
 
         setupStates(3, numServersPerGroup, numShardMasters, numShards);
 
         runState.start(runSettings);
 
-        joinGroup(1, 3);
+        joinGroup(1, 1);
 
         Client client = runState.addClient(client(1));
         Map<String, String> kv = new HashMap<>();
@@ -124,7 +124,7 @@ public final class ShardStorePart1Test extends ShardStoreBaseTest {
     @Category(RunTests.class)
     @TestPointValue(15)
     public void test03ShardsMoveOnJoin() throws InterruptedException {
-        int numServersPerGroup = 3, numShardMasters = 3, numShards = 100;
+        int numServersPerGroup = 1, numShardMasters = 1, numShards = 100;
 
         setupStates(2, numServersPerGroup, numShardMasters, numShards);
 
@@ -178,7 +178,7 @@ public final class ShardStorePart1Test extends ShardStoreBaseTest {
     @Category(RunTests.class)
     @TestPointValue(15)
     public void test04ShardsMoveOnMove() throws InterruptedException {
-        int numServersPerGroup = 3, numShardMasters = 3, numShards = 100;
+        int numServersPerGroup = 1, numShardMasters = 1, numShards = 100;
 
         setupStates(2, numServersPerGroup, numShardMasters, numShards);
 
@@ -293,7 +293,7 @@ public final class ShardStorePart1Test extends ShardStoreBaseTest {
     @Category(RunTests.class)
     @TestPointValue(20)
     public void test06RepeatedPartitioning() throws InterruptedException {
-        int numGroups = 3, numServersPerGroup = 3, numShardMasters = 3,
+        int numGroups = 3, numServersPerGroup = 1, numShardMasters = 1,
                 numShards = 10, testLengthSecs = 50, nClients = 5;
 
         setupStates(numGroups, numServersPerGroup, numShardMasters, numShards);
@@ -360,7 +360,7 @@ public final class ShardStorePart1Test extends ShardStoreBaseTest {
     @Category(RunTests.class)
     @TestPointValue(20)
     public void test07ConstantMovement() throws InterruptedException {
-        int numGroups = 3, numServersPerGroup = 3, numShardMasters = 3,
+        int numGroups = 3, numServersPerGroup = 1, numShardMasters = 1,
                 numShards = 10, testLengthSecs = 50, nClients = 5;
 
         setupStates(numGroups, numServersPerGroup, numShardMasters, numShards);

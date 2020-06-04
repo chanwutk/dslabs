@@ -44,7 +44,7 @@ public class ShardStorePart2Test extends ShardStoreBaseTest {
     @Category(RunTests.class)
     @TestPointValue(5)
     public void test01SingleBasic() throws InterruptedException {
-        int numGroups = 1, numServersPerGroup = 3, numShardMasters = 3,
+        int numGroups = 1, numServersPerGroup = 1, numShardMasters = 1,
                 numShards = 2;
 
         setupStates(numGroups, numServersPerGroup, numShardMasters, numShards);
@@ -66,7 +66,7 @@ public class ShardStorePart2Test extends ShardStoreBaseTest {
     @Category(RunTests.class)
     @TestPointValue(5)
     public void test02MultiBasic() throws InterruptedException {
-        int numGroups = 2, numServersPerGroup = 3, numShardMasters = 3,
+        int numGroups = 2, numServersPerGroup = 1, numShardMasters = 1,
                 numShards = 2;
 
         setupStates(numGroups, numServersPerGroup, numShardMasters, numShards);
@@ -91,7 +91,7 @@ public class ShardStorePart2Test extends ShardStoreBaseTest {
     @Category(RunTests.class)
     @TestPointValue(10)
     public void test03NoProgress() throws InterruptedException {
-        int numServersPerGroup = 3, numShardMasters = 3, numShards = 2;
+        int numServersPerGroup = 1, numShardMasters = 1, numShards = 2;
 
         setupStates(2, numServersPerGroup, numShardMasters, numShards);
 
@@ -137,7 +137,7 @@ public class ShardStorePart2Test extends ShardStoreBaseTest {
     @Category(RunTests.class)
     @TestPointValue(10)
     public void test04PutGetIsolation() throws InterruptedException {
-        int numGroups = 2, numServersPerGroup = 3, numShardMasters = 3,
+        int numGroups = 2, numServersPerGroup = 1, numShardMasters = 1,
                 numShards = 2, numRounds = 100;
 
         setupStates(numGroups, numServersPerGroup, numShardMasters, numShards);
@@ -168,7 +168,7 @@ public class ShardStorePart2Test extends ShardStoreBaseTest {
 
     private void repeatedPutsGetsInternal(boolean moveShards)
             throws InterruptedException {
-        int numGroups = 3, numServersPerGroup = 3, numShardMasters = 3,
+        int numGroups = 3, numServersPerGroup = 1, numShardMasters = 1,
                 numShards = 10, testLengthSecs = 50, nClients = 5;
 
         setupStates(numGroups, numServersPerGroup, numShardMasters, numShards);
