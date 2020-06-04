@@ -228,6 +228,7 @@ public class PaxosServer extends Node {
         AMOCommand amoCommand = m.amoCommand();
 //        assert (amoCommand.sender() == sender);
 
+        // TODO: put the request into the log if things break
         if (amoCommand.executeReadOnly()) {
             Result result = app.executeReadOnly(amoCommand.command());
             int sequenceNum = amoCommand.sequenceNum();
@@ -511,7 +512,7 @@ public class PaxosServer extends Node {
             return;
         }
 
-        if (m.leader_id().compareTo(leader_id) < 0) {
+        if (leader != null && m.leader_id().compareTo(leader_id) < 0) {
             // old leader
             send(new NewLeader(leader, leader_id), sender);
             return;

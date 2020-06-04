@@ -88,6 +88,7 @@ public class ShardStoreServer extends ShardStoreNode {
 
     // Your code here...
     private void handlePaxosReply(PaxosReply m, Address sender) {
+        // from ShardMaster
         if (m.amoResult() == null) {
             return;
         }
@@ -101,10 +102,8 @@ public class ShardStoreServer extends ShardStoreNode {
             return;
         }
 
-        if (correctShards()) {
-            Result result = m.amoResult().result();
-            process(new NewConfig((ShardConfig) result), false, false);
-        }
+        Result result = m.amoResult().result();
+        process(new NewConfig((ShardConfig) result), false, false);
     }
 
     private void handleShardMoveMessage(ShardMoveMessage m, Address sender) {
@@ -156,6 +155,8 @@ public class ShardStoreServer extends ShardStoreNode {
     }
 
     private void process(Command command, boolean replicated, boolean toReply) {
+        // TODO: remove toReply -> broadcast
+
         if (command instanceof ShardMove) {
             processShardMove((ShardMove) command, replicated, toReply);
         } else if (command instanceof ShardMoveAck) {
