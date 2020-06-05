@@ -184,6 +184,10 @@ public class ShardStoreServer extends ShardStoreNode {
 //        LOG.info(log);
 
         if (m.configNum() != config.configNum()) {
+            if (m.configNum() < config.configNum() && toReply) {
+                ShardMoveAck ack = new ShardMoveAck(m.apps().keySet(), m.configNum());
+                send(new ShardMoveAckMessage(ack), m.sender());
+            }
             return;
         }
 
@@ -193,14 +197,6 @@ public class ShardStoreServer extends ShardStoreNode {
         }
 
         ShardMoveAck ack = new ShardMoveAck(m.apps().keySet(), m.configNum());
-        if (m.configNum() < config.configNum()) {
-            // old shard move
-            if (toReply) {
-                send(new ShardMoveAckMessage(ack), m.sender());
-            }
-            return;
-        }
-
         m.apps().forEach((shard, app) -> {
             if (!apps.containsKey(shard)) {
                 apps.put(shard, app);
