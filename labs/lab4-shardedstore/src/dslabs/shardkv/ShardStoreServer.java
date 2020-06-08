@@ -126,6 +126,15 @@ public class ShardStoreServer extends ShardStoreNode {
     private void onQueryTimer(QueryTimer t) {
         Query query = new Query(config.configNum() + 1);
         AMOCommand command = new AMOCommand(query, address(), true);
+//        if (config.configNum() >= 0) {
+//            LOG.info("" + config);
+//        }
+        if (!apps.isEmpty()) {
+            LOG.info(address() + " " + apps.size());
+        }
+        if (!correctShards()) {
+            LOG.info("incorrect" + config);
+        }
         if (correctShards()) {
             broadcastToShardMasters(new PaxosRequest(command));
         }
@@ -291,10 +300,13 @@ public class ShardStoreServer extends ShardStoreNode {
         }
 
         int shard = amoCommandToShard(command);
+        LOG.info(address() + " " + apps.size());
+        LOG.info("" + shard);
         if (!apps.containsKey(shard)) {
             send(new ShardStoreReply(null), command.sender());
             return;
         }
+        LOG.info("" + command);
 
         AMOApplication<KVStore> app = apps.get(shard);
         if (app.alreadyExecuted(command)) {
@@ -306,7 +318,6 @@ public class ShardStoreServer extends ShardStoreNode {
             paxosPropose(command);
             return;
         }
-
         send(new ShardStoreReply(app.execute(command)), command.sender());
     }
 
