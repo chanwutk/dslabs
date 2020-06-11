@@ -13,10 +13,10 @@ import dslabs.shardmaster.ShardMaster.Error;
 import dslabs.shardmaster.ShardMaster.Query;
 import dslabs.shardmaster.ShardMaster.ShardConfig;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.logging.Logger;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
 
@@ -27,10 +27,14 @@ import static dslabs.shardmaster.ShardMaster.INITIAL_CONFIG_NUM;
 @EqualsAndHashCode(callSuper = true)
 public class ShardStoreClient extends ShardStoreNode implements Client {
     // Your code here...
+    private static final int NO_QUERY = -2;
+    private static final Logger LOG = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
     private Result result = null;
     private int seqNum = 0;
+    private ClientTimer pausedClientTimer;
 
     private int configNum;
+    private int timerConfigNum;
     private Map<Integer, Set<Address>> shardAssignments;
 
     /* -------------------------------------------------------------------------
@@ -44,9 +48,10 @@ public class ShardStoreClient extends ShardStoreNode implements Client {
     @Override
     public synchronized void init() {
         // Your code here...
-        shardAssignments = new HashMap<Integer, Set<Address>>();
-        configNum = INITIAL_CONFIG_NUM - 1;
-        onQueryTimer(new QueryTimer(0));
+        shardAssignments = new HashMap<>();
+        timerConfigNum = configNum = INITIAL_CONFIG_NUM - 1;
+        onQueryTimer(new QueryTimer(timerConfigNum));
+        pausedClientTimer = null;
     }
 
     /* -------------------------------------------------------------------------
@@ -60,7 +65,7 @@ public class ShardStoreClient extends ShardStoreNode implements Client {
         AMOCommand amoCommand = new AMOCommand(command, address(), seqNum);
         ShardStoreRequest request = new ShardStoreRequest(amoCommand);
         result = null;
-        onClientTimer(new ClientTimer(request));
+        onClientTimer(new ClientTimer(request, 0));
     }
 
     @Override
@@ -84,6 +89,11 @@ public class ShardStoreClient extends ShardStoreNode implements Client {
     private synchronized void handleShardStoreReply(ShardStoreReply m,
                                                     Address sender) {
         // Your code here...
+        if (m.configNum() > configNum && m.configNum() > timerConfigNum) {
+            timerConfigNum = m.configNum();
+            onQueryTimer(new QueryTimer(timerConfigNum));
+        }
+
         AMOResult amoResult = m.amoResult();
         if (amoResult != null && amoResult.sequenceNum() == seqNum) {
             assert (Objects.equals(address(), amoResult.sender()));
@@ -94,7 +104,7 @@ public class ShardStoreClient extends ShardStoreNode implements Client {
 
     // Your code here...
 
-    private void handlePaxosReply(PaxosReply m, Address sender) {
+    private synchronized void handlePaxosReply(PaxosReply m, Address sender) {
         // reply from Shard Master (Query result)
         Result result = m.amoResult().result();
         if (result instanceof Error) {
@@ -110,10 +120,16 @@ public class ShardStoreClient extends ShardStoreNode implements Client {
         }
 
         configNum = m_configNum;
+        timerConfigNum = NO_QUERY;
         config.groupInfo().forEach((k, v) -> {
-            Set<Address> group = new HashSet<>(v.getLeft());
+            Set<Address> group = v.getLeft();
             v.getRight().forEach(shard -> shardAssignments.put(shard, group));
         });
+
+        if (pausedClientTimer != null) {
+            onClientTimer(pausedClientTimer);
+            pausedClientTimer = null;
+        }
     }
 
     /* -------------------------------------------------------------------------
@@ -126,6 +142,12 @@ public class ShardStoreClient extends ShardStoreNode implements Client {
             return;
         }
 
+        if (timerConfigNum != NO_QUERY) {
+            // pause timer to query
+            pausedClientTimer = t.nextTimer();
+            return;
+        }
+
         if (configNum >= INITIAL_CONFIG_NUM) {
             SingleKeyCommand command = (SingleKeyCommand) amoCommand.command();
             int shard = keyToShard(command.key());
@@ -134,10 +156,15 @@ public class ShardStoreClient extends ShardStoreNode implements Client {
                 broadcast(new ShardStoreRequest(amoCommand), group);
             }
         }
-        set(t, ClientTimer.CLIENT_RETRY_MILLIS);
+        set(t.nextTimer(), ClientTimer.CLIENT_RETRY_MILLIS);
     }
 
-    private void onQueryTimer(QueryTimer t) {
+    private synchronized void onQueryTimer(QueryTimer t) {
+        int t_configNum = t.configNum();
+        if (t_configNum != timerConfigNum) {
+            return;
+        }
+
         Query query = new Query(-1);
         AMOCommand command = new AMOCommand(query, address(), true);
         broadcastToShardMasters(new PaxosRequest(command));

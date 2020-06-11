@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.Stack;
 import java.util.TreeSet;
+import java.util.logging.Logger;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
@@ -27,6 +28,7 @@ public final class ShardMaster implements Application {
     private final int numShards;
 
     // Your code here...
+    private static final Logger LOG = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
     private static final Comparator<Pair<Integer, Stack<Integer>>> SIZE_CMP =
             Comparator.comparingInt(e -> e.getRight().size());
     private static final Comparator<Pair<Integer, Stack<Integer>>> SIZE_GID_CMP =
@@ -270,11 +272,11 @@ public final class ShardMaster implements Application {
         int lastConfigNum = getLastConfigNum();
         if (configNum == -1 || configNum > lastConfigNum) {
             // get last config
-            return getShardConfig(lastConfigNum);
+            return shardConfigList.get(lastConfigNum);
         }
 
         assert(configNum >= 0) : "config number should be >= 0";
-        return getShardConfig(configNum);
+        return shardConfigList.get(configNum);
     }
 
     // util
@@ -289,7 +291,7 @@ public final class ShardMaster implements Application {
         return p(group.getLeft(), shard);
     }
 
-    private <L, R> Pair<L, R> p(L left, R right) {
+    public static <L, R> Pair<L, R> p(L left, R right) {
         return new ImmutablePair<>(left, right);
     }
 
@@ -332,17 +334,5 @@ public final class ShardMaster implements Application {
     private void newConfig(Map<Integer, Pair<Set<Address>, Set<Integer>>> groupInfo) {
         ShardConfig newConfig = new ShardConfig(shardConfigList.size(), groupInfo);
         shardConfigList.add(newConfig);
-    }
-
-    private ShardConfig getShardConfig(int configNum) {
-        Map<Integer, Pair<Set<Address>, Set<Integer>>> clonedGroupInfo =
-                new HashMap<>();
-
-        shardConfigList.get(configNum).groupInfo().forEach((key, value) -> {
-            Set<Address> newServers = new HashSet<>(value.getLeft());
-            Set<Integer> newShards = new HashSet<>(value.getRight());
-            clonedGroupInfo.put(key, new ImmutablePair<>(newServers, newShards));
-        });
-        return new ShardConfig(configNum, clonedGroupInfo);
     }
 }

@@ -737,7 +737,9 @@ public class PaxosServer extends Node {
             }
             //System.out.println("Execute: " + slot_to_exec);
             AMOResult result = runAMOCommand(paxos_log.get(slot_to_exec).amoCommand());
-            send(new PaxosReply(result), amoCommand.sender());
+            if (result != null) {
+                send(new PaxosReply(result), amoCommand.sender());
+            }
         }
     }
 
@@ -817,6 +819,11 @@ public class PaxosServer extends Node {
 
         public boolean alreadyExecuted(AMOCommand amoCommand) {
             return hasApp && app.alreadyExecuted(amoCommand);
+        }
+
+        @Override
+        public String toString() {
+            return hasApp ? app.toString() : "null";
         }
     }
 }

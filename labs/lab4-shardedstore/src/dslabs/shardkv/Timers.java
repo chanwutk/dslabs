@@ -13,6 +13,11 @@ final class ClientTimer implements Timer {
 
     // Your code here...
     @NonNull private final ShardStoreRequest shardStoreRequest;
+    private final int time;
+
+    public ClientTimer nextTimer() {
+        return new ClientTimer(shardStoreRequest, time + 1);
+    }
 }
 
 // Your code here...

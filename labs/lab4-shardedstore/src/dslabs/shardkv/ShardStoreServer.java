@@ -2,6 +2,7 @@ package dslabs.shardkv;
 
 import dslabs.atmostonce.AMOApplication;
 import dslabs.atmostonce.AMOCommand;
+import dslabs.atmostonce.AMOResult;
 import dslabs.framework.Address;
 import dslabs.framework.Command;
 import dslabs.framework.Result;
@@ -14,6 +15,7 @@ import dslabs.paxos.PaxosServer;
 import dslabs.shardmaster.ShardMaster.Error;
 import dslabs.shardmaster.ShardMaster.Query;
 import dslabs.shardmaster.ShardMaster.ShardConfig;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -24,6 +26,7 @@ import lombok.ToString;
 import org.apache.commons.lang3.tuple.Pair;
 
 import static dslabs.shardmaster.ShardMaster.INITIAL_CONFIG_NUM;
+import static dslabs.shardmaster.ShardMaster.p;
 
 
 @ToString(callSuper = true)
@@ -74,6 +77,15 @@ public class ShardStoreServer extends ShardStoreNode {
         sequenceNum = 0;
         config = new ShardConfig(-1 , null);
         waitedAck = new HashMap<>();
+//        Set<Integer> shardSet = new HashSet<>();
+//        for (int i = 1; i <= 10; i++) {
+//            shardSet.add(i);
+//            apps.put(i, new AMOApplication<>(new KVStore()));
+//        }
+//        Map<Integer, Pair<Set<Address>, Set<Integer>>> groupInfo = new HashMap<>();
+//        Set<Address> groupSet = new HashSet<>(Arrays.asList(group));
+//        groupInfo.put(groupId, p(groupSet, shardSet));
+//        config = new ShardConfig(0, groupInfo);
         onQueryTimer(new QueryTimer(0));
     }
 
@@ -282,19 +294,19 @@ public class ShardStoreServer extends ShardStoreNode {
 
     private void processAMOCommand(AMOCommand command, boolean replicated, boolean toReply) {
         if (!correctShards()) {
-            send(new ShardStoreReply(null), command.sender());
+            send(makeReply(null), command.sender());
             return;
         }
 
         int shard = amoCommandToShard(command);
         if (!apps.containsKey(shard)) {
-            send(new ShardStoreReply(null), command.sender());
+            send(makeReply(null), command.sender());
             return;
         }
 
         AMOApplication<KVStore> app = apps.get(shard);
         if (app.alreadyExecuted(command)) {
-            send(new ShardStoreReply(app.execute(command)), command.sender());
+            send(makeReply(app.execute(command)), command.sender());
             return;
         }
 
@@ -303,7 +315,7 @@ public class ShardStoreServer extends ShardStoreNode {
             return;
         }
 
-        send(new ShardStoreReply(app.execute(command)), command.sender());
+        send(makeReply(app.execute(command)), command.sender());
     }
 
     private void paxosPropose(Command command) {
@@ -323,5 +335,9 @@ public class ShardStoreServer extends ShardStoreNode {
             return apps.isEmpty();
         }
         return config.groupInfo().get(groupId).getRight().equals(apps.keySet());
+    }
+
+    private ShardStoreReply makeReply(AMOResult result) {
+        return new ShardStoreReply(result, config.configNum());
     }
 }

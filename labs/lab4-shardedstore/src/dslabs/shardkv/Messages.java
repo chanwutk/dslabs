@@ -23,6 +23,7 @@ final class ShardStoreRequest implements Message {
 final class ShardStoreReply implements Message {
     // Your code here...
     private final AMOResult amoResult;
+    private final int configNum;
 }
 
 // Your code here...
