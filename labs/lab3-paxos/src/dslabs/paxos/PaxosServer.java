@@ -833,7 +833,8 @@ public class PaxosServer extends Node {
         }
 
         private AMOResult sendToShardStore(Command command) {
-            handleMessage(new PaxosDecision(command, isLeader()), shardStoreServer);
+            handleMessage(new PaxosDecision(command, true), shardStoreServer);
+//            handleMessage(new PaxosDecision(command, isLeader()), shardStoreServer);
             return null;
         }
 

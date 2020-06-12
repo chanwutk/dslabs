@@ -15,8 +15,26 @@ Brief description of design:
     the highest number of shards. Then, rebalance.
   - move: move the shard.
   - query: return the config.
+- part 2:
+  - server and client do not use timer to query config to master.
+    - client: query when rejected from server
+    - server:
+      - init
+      - new request
+      - reconfiguration finished
+      - received a config from master
+  - each server keeps a collection of applications, where each app contains kv of one shard.
+    - when reconfiguration, send the whole application of the shard.
+  - every received message goes to paxos for replication before actual execution
+  - request: execute like normal
+  - new config:
+    - if first config: initialize all the application of all the shards.
+    - else: send shards to the correct group
+  - received shard: if correct config, ack to the sender
+  - received ack: remove the application of the sent shard.
 
 
 Hours spent on the lab:
 - part 1: 10
+- part 2: 60
 

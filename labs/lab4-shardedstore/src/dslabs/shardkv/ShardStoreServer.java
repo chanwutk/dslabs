@@ -15,7 +15,6 @@ import dslabs.paxos.PaxosServer;
 import dslabs.shardmaster.ShardMaster.Error;
 import dslabs.shardmaster.ShardMaster.Query;
 import dslabs.shardmaster.ShardMaster.ShardConfig;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -26,7 +25,6 @@ import lombok.ToString;
 import org.apache.commons.lang3.tuple.Pair;
 
 import static dslabs.shardmaster.ShardMaster.INITIAL_CONFIG_NUM;
-import static dslabs.shardmaster.ShardMaster.p;
 
 
 @ToString(callSuper = true)
@@ -77,15 +75,6 @@ public class ShardStoreServer extends ShardStoreNode {
         sequenceNum = 0;
         config = new ShardConfig(-1 , null);
         waitedAck = new HashMap<>();
-//        Set<Integer> shardSet = new HashSet<>();
-//        for (int i = 1; i <= 10; i++) {
-//            shardSet.add(i);
-//            apps.put(i, new AMOApplication<>(new KVStore()));
-//        }
-//        Map<Integer, Pair<Set<Address>, Set<Integer>>> groupInfo = new HashMap<>();
-//        Set<Address> groupSet = new HashSet<>(Arrays.asList(group));
-//        groupInfo.put(groupId, p(groupSet, shardSet));
-//        config = new ShardConfig(0, groupInfo);
         query();
     }
 
