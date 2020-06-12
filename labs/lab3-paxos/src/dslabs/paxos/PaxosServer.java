@@ -46,6 +46,8 @@ public class PaxosServer extends Node {
     private Map<Integer, LogEntry> paxos_log;
     // number of servers to reach majority
     private final int majority;
+    // true if paxos size is one
+    private final boolean sizeOne;
     // index of first non-cleared slot
     private int slot_in;
     // index of next slot to execute
@@ -97,6 +99,7 @@ public class PaxosServer extends Node {
         this.app = new AMOApplicationWrapper(new AMOApplication<>(app));
         this.address = address;
         majority = (servers.length / 2) + 1;
+        sizeOne = servers.length == 1;
 //         LOGGER.setLevel(Level.OFF);
     }
 
@@ -109,6 +112,7 @@ public class PaxosServer extends Node {
         this.address = address;
         majority = (servers.length / 2) + 1;
         this.shardStoreServer = shardStoreServer;
+        sizeOne = servers.length == 1;
     }
 
 
@@ -117,8 +121,6 @@ public class PaxosServer extends Node {
         // Your code here...
         this.slot_in = this.slot_to_exec = this.min_slot_to_exec = this.slot_out = 1;
         this.paxos_log = new HashMap<>();
-        this.leader = null;
-        this.is_leader_alive = false;
         this.prev_heartbeat = new Heartbeat(new BallotNum(-1, address), paxos_log, 0);
         this.p1aAccepted = new HashSet<>();
         this.ballot_num = new BallotNum(0, address);
@@ -131,7 +133,14 @@ public class PaxosServer extends Node {
         this.p2aAccepted = new HashMap<>();
 
         this.p2a_seq = 1;
-        set(new HeartbeatCheckTimer(), HB_CHECK_TIMER);
+        if (sizeOne) {
+            this.leader = address();
+            this.is_leader_alive = true;
+        } else {
+            onHeartbeatCheckTimer(new HeartbeatCheckTimer());
+            this.leader = null;
+            this.is_leader_alive = false;
+        }
     }
 
     /* -------------------------------------------------------------------------
@@ -220,7 +229,7 @@ public class PaxosServer extends Node {
        -----------------------------------------------------------------------*/
     private void handlePaxosRequest(PaxosRequest m, Address sender) {
         // Your code here...
-        if (!isLeader()) {
+        if (!isLeader() && !sizeOne) {
             // only leader accepts request -> reject the message
             return;
         }
@@ -232,14 +241,19 @@ public class PaxosServer extends Node {
         if (amoCommand.executeReadOnly()) {
             Result result = app.executeReadOnly(amoCommand.command());
             int sequenceNum = amoCommand.sequenceNum();
-            send(new PaxosReply(new AMOResult(result, sender, sequenceNum)), sender);
+            sendReply(new AMOResult(result, sender, sequenceNum), sender);
             return;
+        }
+
+        if (sizeOne) {
+            AMOResult result = app.execute(amoCommand);
+            sendReply(result, sender);
         }
 
 //        LOGGER.info("Request: " + amoCommand);
         if (app.alreadyExecuted(amoCommand)) {
             // outdated request
-            send(new PaxosReply(app.execute(amoCommand)), sender);
+            sendReply(app.execute(amoCommand), sender);
             return;
         }
 
@@ -639,7 +653,9 @@ public class PaxosServer extends Node {
             }
         }
 
-        set(t, P2A_TIMER);
+        if (!sizeOne) {
+            set(t, P2A_TIMER);
+        }
     }
 
     private void onP1aTimer(P1aTimer t) {
@@ -737,9 +753,7 @@ public class PaxosServer extends Node {
             }
             //System.out.println("Execute: " + slot_to_exec);
             AMOResult result = runAMOCommand(paxos_log.get(slot_to_exec).amoCommand());
-            if (result != null) {
-                send(new PaxosReply(result), amoCommand.sender());
-            }
+            sendReply(result, amoCommand.sender());
         }
     }
 
@@ -785,6 +799,12 @@ public class PaxosServer extends Node {
             slot_out = slot + 1;
         }
         paxos_log.put(slot, entry);
+    }
+
+    private void sendReply(AMOResult result, Address sender) {
+        if (result != null) {
+            send(new PaxosReply(result), sender);
+        }
     }
 
     private class AMOApplicationWrapper implements Serializable {

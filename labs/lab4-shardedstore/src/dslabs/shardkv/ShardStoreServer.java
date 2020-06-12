@@ -86,7 +86,7 @@ public class ShardStoreServer extends ShardStoreNode {
 //        Set<Address> groupSet = new HashSet<>(Arrays.asList(group));
 //        groupInfo.put(groupId, p(groupSet, shardSet));
 //        config = new ShardConfig(0, groupInfo);
-        onQueryTimer(new QueryTimer(0));
+        query();
     }
 
 
@@ -95,26 +95,28 @@ public class ShardStoreServer extends ShardStoreNode {
        -----------------------------------------------------------------------*/
     private void handleShardStoreRequest(ShardStoreRequest m, Address sender) {
         // Your code here...
+        query();
         process(m.amoCommand(), false, false);
     }
 
     // Your code here...
     private void handlePaxosReply(PaxosReply m, Address sender) {
         // from ShardMaster
-        if (m.amoResult() == null) {
+        AMOResult amoResult = m.amoResult();
+        if (amoResult == null) {
             return;
         }
 
-        if (m.amoResult().result() instanceof Error) {
+        Result result = amoResult.result();
+        if (result instanceof Error) {
+            query();
             return;
         }
 
-        // from shard master
         if (!correctShards()) {
             return;
         }
 
-        Result result = m.amoResult().result();
         process(new NewConfig((ShardConfig) result), false, false);
     }
 
@@ -141,7 +143,7 @@ public class ShardStoreServer extends ShardStoreNode {
         if (correctShards()) {
             broadcastToShardMasters(new PaxosRequest(command));
         }
-        set(t, QueryTimer.QUERY_MILLIS);
+//        set(t, QueryTimer.QUERY_MILLIS);
     }
 
     private void onShardMoveTimer(ShardMoveTimer t) {
@@ -200,6 +202,7 @@ public class ShardStoreServer extends ShardStoreNode {
                 ShardMoveAck ack = new ShardMoveAck(m.apps().keySet(), m.configNum());
                 send(new ShardMoveAckMessage(ack), m.sender());
             }
+            query();
             return;
         }
 
@@ -218,6 +221,7 @@ public class ShardStoreServer extends ShardStoreNode {
         if (toReply) {
             send(new ShardMoveAckMessage(ack), m.sender());
         }
+        query();
     }
 
     private void processShardMoveAck(ShardMoveAck m, boolean replicated, boolean toReply) {
@@ -231,6 +235,7 @@ public class ShardStoreServer extends ShardStoreNode {
         }
 
         m.shards().forEach(apps::remove);
+        query();
     }
 
     private void processNewConfig(NewConfig m, boolean replicated, boolean toReply) {
@@ -240,6 +245,7 @@ public class ShardStoreServer extends ShardStoreNode {
 //        LOG.info("  " + groupId + "  toReply: " + toReply);
 //        LOG.info("  " + groupId + "  shards: " + apps.keySet());
         if (m.config().configNum() != config.configNum() + 1) {
+            query();
             return;
         }
 
@@ -255,9 +261,11 @@ public class ShardStoreServer extends ShardStoreNode {
                 config.groupInfo().get(groupId).getRight()
                       .forEach(shard -> apps.put(shard, new AMOApplication<>(new KVStore())));
             }
+            query();
             return;
         }
 
+        query();
         if (!toReply) {
             return;
         }
@@ -339,5 +347,15 @@ public class ShardStoreServer extends ShardStoreNode {
 
     private ShardStoreReply makeReply(AMOResult result) {
         return new ShardStoreReply(result, config.configNum());
+    }
+
+    private void query() {
+        if (!correctShards()) {
+            return;
+        }
+
+        Query query = new Query(config.configNum() + 1);
+        AMOCommand command = new AMOCommand(query, address(), true);
+        broadcastToShardMasters(new PaxosRequest(command));
     }
 }
