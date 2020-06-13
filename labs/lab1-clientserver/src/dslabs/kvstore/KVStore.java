@@ -67,7 +67,7 @@ public class KVStore implements Application {
     private static final KeyNotFound KEY_NOT_FOUND = new KeyNotFound();
     private static final PutOk PUT_OK = new PutOk();
 
-    private final Map<String, String> kv = new HashMap<>();
+    protected final Map<String, String> kv = new HashMap<>();
 
     @Override
     public KVStoreResult execute(Command command) {

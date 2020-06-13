@@ -150,6 +150,7 @@ public class TransactionalKVStore extends KVStore {
         if (command instanceof Transaction) {
             Transaction t = (Transaction) command;
             // Your code here...
+            return t.run(kv);
         }
 
         return super.execute(command);

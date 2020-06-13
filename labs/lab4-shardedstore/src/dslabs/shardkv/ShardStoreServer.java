@@ -8,6 +8,11 @@ import dslabs.framework.Command;
 import dslabs.framework.Result;
 import dslabs.kvstore.KVStore;
 import dslabs.kvstore.KVStore.SingleKeyCommand;
+import dslabs.kvstore.TransactionalKVStore;
+import dslabs.kvstore.TransactionalKVStore.MultiGet;
+import dslabs.kvstore.TransactionalKVStore.MultiPut;
+import dslabs.kvstore.TransactionalKVStore.Swap;
+import dslabs.kvstore.TransactionalKVStore.Transaction;
 import dslabs.paxos.PaxosDecision;
 import dslabs.paxos.PaxosReply;
 import dslabs.paxos.PaxosRequest;
@@ -15,16 +20,20 @@ import dslabs.paxos.PaxosServer;
 import dslabs.shardmaster.ShardMaster.Error;
 import dslabs.shardmaster.ShardMaster.Query;
 import dslabs.shardmaster.ShardMaster.ShardConfig;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
+import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 
 import static dslabs.shardmaster.ShardMaster.INITIAL_CONFIG_NUM;
+import static dslabs.shardmaster.ShardMaster.p;
 
 
 @ToString(callSuper = true)
@@ -37,7 +46,7 @@ public class ShardStoreServer extends ShardStoreNode {
 
     // Your code here...
     private static final Logger LOG = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
-    private final Map<Integer, AMOApplication<KVStore>> apps;
+    private final Map<Integer, AMOApplication<TransactionalKVStore>> apps;
     private Address paxosAddress;
     private int sequenceNum;
     private Map<Integer, Set<Integer>> waitedAck;
@@ -248,7 +257,7 @@ public class ShardStoreServer extends ShardStoreNode {
             // first config
             if (config.groupInfo().containsKey(groupId)) {
                 config.groupInfo().get(groupId).getRight()
-                      .forEach(shard -> apps.put(shard, new AMOApplication<>(new KVStore())));
+                      .forEach(shard -> apps.put(shard, new AMOApplication<>(new TransactionalKVStore())));
             }
             query();
             return;
@@ -279,7 +288,7 @@ public class ShardStoreServer extends ShardStoreNode {
 
         int configNum = config.configNum();
         toSend.forEach((gid, shardsToSend) -> {
-            Map<Integer, AMOApplication<KVStore>> appsToSend = new HashMap<>();
+            Map<Integer, AMOApplication<TransactionalKVStore>> appsToSend = new HashMap<>();
             shardsToSend.forEach(shard -> {
                 appsToSend.put(shard, apps.get(shard));
             });
@@ -290,18 +299,52 @@ public class ShardStoreServer extends ShardStoreNode {
     }
 
     private void processAMOCommand(AMOCommand command, boolean replicated, boolean toReply) {
+        if (command.command() instanceof Transaction) {
+            processTransaction(command, replicated, toReply);
+        } else if (command.command() instanceof SingleKeyCommand) {
+            processSingleKeyCommand(command, replicated, toReply);
+        } else {
+            LOG.severe("not Transaction or SingleKeyCommand");
+        }
+    }
+
+    private void processTransaction(AMOCommand command, boolean replicated, boolean toReply) {
         if (!correctShards()) {
             send(makeReply(null), command.sender());
             return;
         }
 
-        int shard = amoCommandToShard(command);
-        if (!apps.containsKey(shard)) {
+        Set<Integer> shards = amoCommandToShards(command);
+        Pair<Integer, Integer> swapShards = swapToShards(command);
+        if (swapShards != null) {
+            int left = swapShards.getLeft();
+            int right = swapShards.getRight();
+
+            boolean hasLeft = apps.containsKey(left);
+            boolean hasRight = apps.containsKey(right);
+
+            if (hasLeft) {
+                shards.add(left);
+                if (hasRight) {
+                    shards.add(right);
+                }
+            } else {
+                shards.add(right);
+            }
+        }
+        if (!apps.keySet().containsAll(shards)) {
             send(makeReply(null), command.sender());
             return;
         }
 
-        AMOApplication<KVStore> app = apps.get(shard);
+        Map<Integer, Pair<AMOApplication<TransactionalKVStore>, Transaction>>
+                transaction = splitTransactions((Transaction) command.command(), shards);
+        transaction.forEach((s, p) -> {
+            if (apps.get(s).alreadyExecuted(command)) {
+                send(makeReply(app.execute(command)), command.sender());
+                return;
+            }
+        });
         if (app.alreadyExecuted(command)) {
             send(makeReply(app.execute(command)), command.sender());
             return;
@@ -315,8 +358,100 @@ public class ShardStoreServer extends ShardStoreNode {
         send(makeReply(app.execute(command)), command.sender());
     }
 
+    private void processSingleKeyCommand(AMOCommand command, boolean replicated, boolean toReply) {
+        if (!correctShards()) {
+            send(makeReply(null), command.sender());
+            return;
+        }
+
+        int shard = amoCommandToShard(command);
+        if (!apps.containsKey(shard)) {
+            send(makeReply(null), command.sender());
+            return;
+        }
+
+        AMOApplication<TransactionalKVStore> app = apps.get(shard);
+        if (app.alreadyExecuted(command)) {
+            send(makeReply(app.execute(command)), command.sender());
+            return;
+        }
+
+        if (!replicated) {
+            paxosPropose(command);
+            return;
+        }
+
+        send(makeReply(app.execute(command)), command.sender());
+    }
+
+
+
+    private Map<Integer, Pair<AMOApplication<TransactionalKVStore>, Transaction>> splitTransactions(Transaction transaction, Set<Integer> shards) {
+        Map<Integer, Pair<AMOApplication<TransactionalKVStore>, Transaction>> transactions = new HashMap<>();
+        shards.forEach(shard -> {
+            transactions.put(shard, p(apps.get(shard), splitTransaction(transaction, shard)));
+        });
+        return transactions;
+    }
+
+    private Transaction splitTransaction(Transaction transaction, int shard) {
+        if (transaction instanceof Swap) {
+            return transaction;
+        } else if (transaction instanceof MultiGet) {
+            Set<String> keys = new HashSet<>();
+            ((MultiGet) transaction).keys().forEach(k -> {
+                if (keyToShard(k) == shard) {
+                    keys.add(k);
+                }
+            });
+            return new MultiGet(keys);
+        } else {
+            Map<String, String> values = new HashMap<>();
+            ((MultiPut) transaction).values().forEach((k, v) -> {
+                if (keyToShard(k) == shard) {
+                    values.put(k, v);
+                }
+            });
+            return new MultiPut(values);
+        }
+    }
+
     private void paxosPropose(Command command) {
         handleMessage(new PaxosRequest(new AMOCommand(command, address(), false)), paxosAddress);
+    }
+
+    private Pair<Integer, Integer> swapToShards(AMOCommand amoCommand) {
+        Command command = amoCommand.command();
+        if (command instanceof Transaction) {
+            if (command instanceof Swap) {
+                Swap swap = (Swap) command;
+                return new ImmutablePair<>(keyToShard(swap.key1()), keyToShard(swap.key2()));
+            }
+        } else if (!(command instanceof SingleKeyCommand)) {
+            LOG.severe("command is not a SingleKeyCommand or a Transaction");
+        }
+        return null;
+    }
+
+    private Set<Integer> amoCommandToShards(AMOCommand amoCommand) {
+        Command command = amoCommand.command();
+        Set<Integer> shards = new HashSet<>();
+        if (command instanceof Transaction) {
+            if (!(command instanceof Swap)) {
+                Set<String> keys = null;
+                if (command instanceof MultiGet) {
+                    keys = ((MultiGet) command).keys();
+                } else if (command instanceof MultiPut) {
+                    keys = ((MultiPut) command).values().keySet();
+                }
+
+                assert keys != null;
+                keys.forEach(k -> shards.add(keyToShard(k)));
+            }
+        } else {
+            LOG.severe("command is not a Transaction");
+        }
+        return shards;
     }
 
     private int amoCommandToShard(AMOCommand amoCommand) {

@@ -7,6 +7,7 @@ import dslabs.framework.Address;
 import dslabs.framework.Command;
 import dslabs.framework.Message;
 import dslabs.kvstore.KVStore;
+import dslabs.kvstore.TransactionalKVStore;
 import dslabs.shardmaster.ShardMaster.ShardConfig;
 import java.util.Map;
 import java.util.Set;
@@ -34,7 +35,7 @@ final class ShardMoveMessage implements Message {
 
 @Data
 final class ShardMove implements Command {
-    @NonNull private final Map<Integer, AMOApplication<KVStore>> apps;
+    @NonNull private final Map<Integer, AMOApplication<TransactionalKVStore>> apps;
     private final int configNum;
     @NonNull private Address sender;
 }
